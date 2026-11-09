@@ -15,10 +15,11 @@
 #define APPNAME L"キーパッドタイマー"
 #define W_LOG 240   /* logical size @96 dpi */
 #define H_LOG 420
+#define H_COMPACT 138   /* compact mode: title bar + display only */
 #define ARGB(a, r, g, b) ((ARGB)(((DWORD)(a) << 24) | ((DWORD)(r) << 16) | ((DWORD)(g) << 8) | (DWORD)(b)))
 
 /* ---------- buttons ---------- */
-enum { B_ADD5 = 10, B_ADD1, B_ADD30, B_BS, B_RESET, B_START, B_PIN, B_CLOSE, B_COUNT }; /* 0..9 = digits */
+enum { B_ADD5 = 10, B_ADD1, B_ADD30, B_BS, B_RESET, B_START, B_PIN, B_CLOSE, B_LCD, B_COUNT }; /* 0..9 = digits */
 typedef struct { float x, y, w, h; } RF;
 static RF gBtn[B_COUNT];
 
@@ -35,12 +36,14 @@ static void Layout(void)
     gBtn[B_START] = (RF){ m, y + 4 * (rh + gap), W_LOG - 2 * m, 44 };
     gBtn[B_PIN]   = (RF){ W_LOG - 56, 6, 20, 20 };
     gBtn[B_CLOSE] = (RF){ W_LOG - 32, 6, 20, 20 };
+    gBtn[B_LCD]   = (RF){ 12, 32, W_LOG - 24, 94 };   /* double-click: compact mode */
 }
 
 /* ---------- state ---------- */
 static HWND gWnd;
 static Timer gT;
-static float gScale = 1;
+static float gScale = 1, gH = H_LOG;   /* gH: current logical height */
+static long long gLastLcd;
 static int gHover = -1, gPress = -1, gTop = 0, gBlinkOn = 1, gRinging;
 static GpFontFamily *gFam;
 enum { TM_TICK = 1, TM_ALARM, TM_CLICKCLOSE };
@@ -129,6 +132,21 @@ static void FillRRc(GpGraphics *g, RF r, float rad, ARGB c)
     GdipCreateSolidFill(c, &b);
     FillRR(g, r, rad, (GpBrush *)b);
     GdipDeleteBrush((GpBrush *)b);
+}
+static void FillGrad(GpGraphics *g, RF r, float rad, ARGB top, ARGB bottom)
+{
+    GpRectF rf = { r.x, r.y - 0.5f, r.w, r.h + 1 };
+    GpLineGradient *b;
+    GdipCreateLineBrushFromRect(&rf, top, bottom, LinearGradientModeVertical, WrapModeTileFlipXY, &b);
+    FillRR(g, r, rad, (GpBrush *)b);
+    GdipDeleteBrush((GpBrush *)b);
+}
+static ARGB Mix(ARGB a, ARGB b, float t)   /* blend colours, keep a's alpha */
+{
+    ARGB r = a & 0xFF000000;
+    int i;
+    for (i = 0; i < 24; i += 8) r |= (ARGB)lrintf(((a >> i) & 255) + ((int)((b >> i) & 255) - (int)((a >> i) & 255)) * t) << i;
+    return r;
 }
 static float Text(GpGraphics *g, const wchar_t *s, RF r, float size, ARGB c, int measure)
 {
@@ -266,9 +284,13 @@ static void DrawKey(GpGraphics *g, int id)
     ARGB ink = cream ? ARGB(255, 150, 14, 32) : ARGB(255, 255, 248, 240);
     wchar_t d[2] = { (wchar_t)(L'0' + id), 0 };
     const wchar_t *s = id < 10 ? d : lab[id - B_ADD5];
-    FillRRc(g, r, 8, fill);
-    if (gPress == id) FillRRc(g, r, 8, ARGB(70, 60, 0, 10));
-    else if (gHover == id) FillRRc(g, r, 8, ARGB(40, 255, 255, 255));
+    if (gPress == id) {   /* pushed in: sunk 1.5 px, shading reversed, no shadow */
+        r.y += 1.5f;
+        FillGrad(g, r, 8, Mix(fill, 0, 0.12f), Mix(fill, 0xFFFFFFFF, 0.06f));
+    } else {              /* raised: soft shadow below, light from above */
+        FillRRc(g, (RF){ r.x, r.y + 2, r.w, r.h }, 8, ARGB(70, 70, 0, 12));
+        FillGrad(g, r, 8, Mix(fill, 0xFFFFFFFF, gHover == id ? 0.30f : 0.20f), Mix(fill, 0, 0.10f));
+    }
     if (id >= B_ADD5 && id <= B_ADD30) {   /* big number + small unit */
         const wchar_t *unit = id == B_ADD30 ? L"秒" : L"分";
         float wn = Text(g, s, r, 19, 0, 1), wu = Text(g, unit, r, 10.5f, 0, 1), x0 = r.x + (r.w - wn - wu - 1.5f) / 2;
@@ -278,23 +300,21 @@ static void DrawKey(GpGraphics *g, int id)
         Text(g, s, r, id < 10 ? 20 : 15, ink, 0);
 }
 
-/* only the case has some depth: a soft vertical shade and a bevelled rim */
+/* molded-plastic case: lighter in the middle, rounding off darker toward the edges (no lines) */
 static void DrawCase(GpGraphics *g)
 {
-    static const REAL pos[3] = { 0, 0.5f, 1 };
-    const ARGB rim[3] = { ARGB(120, 255, 255, 255), ARGB(0, 255, 255, 255), ARGB(110, 40, 0, 8) };
-    GpRectF rf = { 0, -1, W_LOG, H_LOG + 2 };
-    GpLineGradient *b;
-    GpPen *pen;
-    GpPath *p = RRect((RF){ 1.5f, 1.5f, W_LOG - 3, H_LOG - 3 }, 16.5f);
-    GdipCreateLineBrushFromRect(&rf, ARGB(255, 200, 28, 48), ARGB(255, 164, 14, 34), LinearGradientModeVertical, WrapModeTileFlipXY, &b);
-    FillRR(g, (RF){ 0, 0, W_LOG, H_LOG }, 18, (GpBrush *)b);
-    GdipSetLinePresetBlend(b, rim, pos, 3);
-    GdipCreatePen2((GpBrush *)b, 3, UnitWorld, &pen);
-    GdipDrawPath(g, pen, p);
-    GdipDeletePen(pen);
-    GdipDeletePath(p);
+    ARGB edge = ARGB(255, 150, 8, 28);
+    int n = 1;
+    GpPath *p = RRect((RF){ 0, 0, W_LOG, gH }, 18);
+    GpPathGradient *b;
+    GdipCreatePathGradientFromPath(p, &b);
+    GdipSetPathGradientCenterColor(b, ARGB(255, 206, 32, 52));
+    GdipSetPathGradientSurroundColorsWithCount(b, &edge, &n);
+    GdipSetPathGradientFocusScales(b, 1 - 36.0f / W_LOG, 1 - 36.0f / gH);
+    GdipFillPath(g, (GpBrush *)b, p);
     GdipDeleteBrush((GpBrush *)b);
+    GdipDeletePath(p);
+    FillGrad(g, (RF){ 0, 0, W_LOG, 60 }, 18, ARGB(60, 255, 255, 255), ARGB(0, 255, 255, 255));  /* top light */
 }
 
 static void DrawAll(GpGraphics *g, long long now)
@@ -306,9 +326,9 @@ static void DrawAll(GpGraphics *g, long long now)
     DrawCase(g);
     Text(g, L"KEYPAD TIMER", (RF){ 14, 6, 110, 20 }, 10.5f, ARGB(220, 255, 228, 222), 0);
     DrawLcd(g, now);
-    for (i = 0; i < B_COUNT; i++) {
+    for (i = 0; i < B_LCD; i++) {
         if (i >= B_PIN) DrawSysBtn(g, i);
-        else DrawKey(g, i);
+        else if (gBtn[i].y + gBtn[i].h <= gH) DrawKey(g, i);
     }
 }
 
@@ -316,7 +336,7 @@ static void DrawAll(GpGraphics *g, long long now)
 static HBITMAP RenderDib(long long now, float scale, int *pw, int *ph, void **bits)
 {
     BITMAPINFO bi = { { sizeof(BITMAPINFOHEADER), 0, 0, 1, 32 } };
-    int w = (int)ceilf(W_LOG * scale), h = (int)ceilf(H_LOG * scale);
+    int w = (int)ceilf(W_LOG * scale), h = (int)ceilf(gH * scale);
     HBITMAP hb;
     GpBitmap *bm;
     GpGraphics *g;
@@ -387,6 +407,15 @@ static void Press(int id)
 {
     long long now = Now();
     if (id == B_CLOSE) { PostMessageW(gWnd, WM_CLOSE, 0, 0); return; }
+    if (id == B_LCD) {   /* click stops a ringing alarm; double-click toggles compact mode */
+        if (tl_stop_alarm(&gT)) { SyncAlarm(); Click(); }
+        if (now - gLastLcd <= (long long)GetDoubleClickTime()) {
+            gH = gH == H_LOG ? H_COMPACT : H_LOG;   /* top-left stays put */
+            now = 0;
+        }
+        gLastLcd = now;
+        return;
+    }
     if (id == B_PIN) {
         gTop = !gTop;
         SetWindowPos(gWnd, gTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -407,7 +436,7 @@ static int HitTest(int cx, int cy)
     float x = cx / gScale, y = cy / gScale;
     int i;
     for (i = 0; i < B_COUNT; i++)
-        if (x >= gBtn[i].x && x < gBtn[i].x + gBtn[i].w && y >= gBtn[i].y && y < gBtn[i].y + gBtn[i].h) return i;
+        if (x >= gBtn[i].x && x < gBtn[i].x + gBtn[i].w && y >= gBtn[i].y && y < gBtn[i].y + gBtn[i].h && gBtn[i].y + gBtn[i].h <= gH) return i;
     return -1;
 }
 
@@ -437,7 +466,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         Render();
         return 0;
     case WM_MOUSEMOVE:
-        if ((id = HitTest(GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) != gHover) {
+        if ((id = HitTest(GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) != gHover && id != B_LCD) {
             TRACKMOUSEEVENT te = { sizeof te, TME_LEAVE, h, 0 };
             TrackMouseEvent(&te);
             gHover = id;
@@ -471,7 +500,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     case WM_DPICHANGED: {
         RECT *r = (RECT *)lp;
         gScale = HIWORD(wp) / 96.0f;
-        SetWindowPos(h, NULL, r->left, r->top, (int)ceilf(W_LOG * gScale), (int)ceilf(H_LOG * gScale), SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(h, NULL, r->left, r->top, (int)ceilf(W_LOG * gScale), (int)ceilf(gH * gScale), SWP_NOZORDER | SWP_NOACTIVATE);
         Render();
         return 0;
     }
@@ -504,7 +533,9 @@ static int Shot(const wchar_t *file, const wchar_t *what)
     if (!wcscmp(what, L"stopwatch")) { tl_startstop(&gT, t0); t0 += 83400; }   /* 0:01:23 */
     if (!wcscmp(what, L"entered") || !wcscmp(what, L"bs")) for (i = 0; i < 3; i++) tl_digit(&gT, L"130"[i] - L'0', 0);
     if (!wcscmp(what, L"bs")) { tl_backspace(&gT, 0); gPress = B_BS; }
-    if (!wcscmp(what, L"running") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm")) {
+    if (!wcscmp(what, L"entered")) gHover = 7;
+    if (!wcscmp(what, L"compact")) gH = H_COMPACT;
+    if (!wcscmp(what, L"running") || !wcscmp(what, L"compact") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm")) {
         tl_digit(&gT, 2, 0); tl_digit(&gT, 5, 0);
         tl_startstop(&gT, t0);
         t0 += 746000;   /* 12:34 left */

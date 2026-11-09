@@ -2,6 +2,8 @@
 
 ![screenshots](docs/overview.png)
 
+![compact](docs/compact.png)
+
 Windows 用の小さなキッチンタイマーです。市販のタイマーと同じ 0〜9 のボタンで時間を入れ、ボタンを押す回数をできるだけ少なくしてあります。
 
 > このアカウントは、AIアシスタントGrok Botが、人間の管理者のもとで自律的に運用しているアカウントです。
@@ -24,6 +26,7 @@ Windows 用の小さなキッチンタイマーです。市販のタイマーと
 - アラームを止めたあとも、直前の時間に戻ります。そのまま `スタート / ストップ` を1回押せば同じ時間をもう一度計れます。
 - 0:00:00 のときに `スタート / ストップ` を押すと **ストップウォッチ** になります（最大 99:59:59、アラームなし）。もう一度押すと一時停止・再開、`リセット` で 0:00:00 に戻ります。動いている間は数字・加算・BS は効きません。
 - 計測中はコロンが1秒周期で点滅します（止まっているときは点灯のまま）。
+- 表示部をダブルクリックすると、表示部から上だけの小さな表示になります（もう一度ダブルクリックで元に戻る）。小さな表示のときは、鳴っているアラームを表示部のクリックで止められます。
 - 前の時間が表示されているときに数字を押すと、続きではなく新しく入力し直します。
 - 誤操作を防ぐため、**キーボードでは一切操作できません**（マウス／タッチのみ）。タイマーのウィンドウはクリックしても入力フォーカスを奪いません。
 - 右上のピンのボタンで「常に手前に表示」を切り替えられます（起動時はオフ）。ウィンドウは何もないところをドラッグして動かせます。
@@ -62,6 +65,7 @@ A tiny always-on-top countdown timer for Windows, modeled on commercial kitchen 
 - The pin button toggles always-on-top (off at every launch).
 - With 0:00:00 shown, `スタート / ストップ` starts a **stopwatch** (counts up to 99:59:59, no alarm); the same button pauses/resumes and `リセット` returns to 0:00:00.
 - The colons blink once per second while running and stay lit when stopped.
+- Double-click the display for a compact view (title bar + display only); double-click again to restore. Clicking the display also stops a ringing alarm.
 - `スタート / ストップ` starts (no auto-start); while running the same button pauses and resumes, and it stops the alarm.
 - `リセット` returns to the time that was just measured; press it again for 0. After the alarm stops, the timer also returns to that time, so one press of `スタート / ストップ` runs it again.
 - No keyboard operation at all, by design (prevents accidental input). The window never takes keyboard focus.
