@@ -1,0 +1,56 @@
+#pragma code_page(65001)
+#include <windows.h>
+#include <commctrl.h>
+#include "resource.h"
+
+IDI_APP ICON "app.ico"
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "app.manifest"
+
+IDD_SETTINGS DIALOGEX 0, 0, 236, 150
+STYLE DS_MODALFRAME | DS_CENTER | DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "設定 - キーパッドタイマー"
+FONT 9, "Meiryo UI", 400, 0, 0x80
+BEGIN
+    LTEXT           "音量", -1, 10, 12, 60, 10
+    CONTROL         "", IDC_VOL, "msctls_trackbar32", TBS_HORZ | TBS_NOTICKS | WS_TABSTOP, 70, 9, 124, 16
+    LTEXT           "60 %", IDC_VOLTXT, 198, 12, 30, 10
+    LTEXT           "ボタン操作音もアラームの最大音量と同じ大きさで鳴ります。", -1, 10, 28, 218, 10
+    LTEXT           "だんだん大きくする時間", -1, 10, 50, 110, 10
+    EDITTEXT        IDC_FADE, 124, 48, 40, 13, ES_NUMBER | ES_RIGHT
+    CONTROL         "", IDC_FADESPIN, "msctls_updown32", UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS, 0, 0, 0, 0
+    LTEXT           "秒", -1, 170, 50, 50, 10
+    LTEXT           "0 にすると最初から最大音量で鳴ります。", -1, 18, 64, 210, 10
+    LTEXT           "最大音量になってから", -1, 10, 84, 110, 10
+    EDITTEXT        IDC_HOLD, 124, 82, 40, 13, ES_NUMBER | ES_RIGHT
+    CONTROL         "", IDC_HOLDSPIN, "msctls_updown32", UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS, 0, 0, 0, 0
+    LTEXT           "分で自動停止", -1, 170, 84, 60, 10
+    AUTOCHECKBOX    "常に手前に表示する", IDC_TOP, 10, 104, 150, 12
+    PUSHBUTTON      "試聴", IDC_TEST, 10, 126, 50, 16
+    DEFPUSHBUTTON   "OK", IDOK, 122, 126, 50, 16
+    PUSHBUTTON      "キャンセル", IDCANCEL, 178, 126, 50, 16
+END
+
+1 VERSIONINFO
+FILEVERSION 0,1,0,0
+PRODUCTVERSION 0,1,0,0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "041104b0"
+    BEGIN
+      VALUE "CompanyName", "zmlworks"
+      VALUE "ProductName", "Keypad Timer"
+      VALUE "FileDescription", "Keypad Timer (キーパッドタイマー)"
+      VALUE "FileVersion", "0.1.0"
+      VALUE "ProductVersion", "0.1.0"
+      VALUE "LegalCopyright", "Copyright (c) 2026 zmlworks, MIT License"
+      VALUE "OriginalFilename", "KeypadTimer.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x411, 1200
+  END
+END

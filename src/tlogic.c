@@ -1,0 +1,194 @@
+/* Keypad Timer - pure timer logic. MIT (c) zmlworks */
+#include "tlogic.h"
+#include <math.h>
+
+static int clampsec(long long s) { return s < 0 ? 0 : s > TL_MAX_SEC ? TL_MAX_SEC : (int)s; }
+
+void tl_init(Timer *t, int remembered)
+{
+    t->st = TL_IDLE;
+    t->remembered = clampsec(remembered);
+    t->disp = t->remembered;
+    t->end_ms = t->rem_ms = t->alarm_ms = 0;
+    t->entry = 0;
+    t->ndig = 0;
+}
+
+int tl_entry_to_sec(int entry)
+{
+    int h = entry / 100, m = entry % 100;
+    return clampsec((long long)h * 3600 + (long long)m * 60);
+}
+
+static long long ceil_sec(long long ms) { return ms <= 0 ? 0 : (ms + 999) / 1000; }
+
+int tl_display(const Timer *t, long long now)
+{
+    switch (t->st) {
+    case TL_RUN:   return (int)ceil_sec(t->end_ms - now);
+    case TL_PAUSE: return (int)ceil_sec(t->rem_ms);
+    case TL_ALARM: return 0;
+    default:       return t->disp;
+    }
+}
+
+int tl_stop_alarm(Timer *t)
+{
+    if (t->st != TL_ALARM) return 0;
+    t->st = TL_IDLE;
+    t->disp = t->remembered;
+    t->ndig = 0;
+    return 1;
+}
+
+int tl_digit(Timer *t, int d, long long now)
+{
+    (void)now;
+    if (t->st == TL_ALARM) return tl_stop_alarm(t);
+    if (t->st != TL_IDLE || d < 0 || d > 9) return 0;
+    if (t->ndig == 0) t->entry = 0;          /* fresh input, no appending */
+    t->entry = (t->entry * 10 + d) % 10000;  /* keep the last 4 digits */
+    if (t->ndig < 4) t->ndig++;
+    t->disp = tl_entry_to_sec(t->entry);
+    return 1;
+}
+
+int tl_add(Timer *t, int sec, long long now)
+{
+    long long rem;
+    switch (t->st) {
+    case TL_ALARM: return tl_stop_alarm(t);
+    case TL_IDLE:
+        t->disp = clampsec((long long)t->disp + sec);
+        t->ndig = 0;  /* next digit starts fresh */
+        return 1;
+    case TL_PAUSE:
+        rem = t->rem_ms + (long long)sec * 1000;
+        t->rem_ms = rem > TL_MAX_SEC * 1000LL ? TL_MAX_SEC * 1000LL : rem;
+        return 1;
+    case TL_RUN:
+        rem = t->end_ms - now + (long long)sec * 1000;
+        if (rem > TL_MAX_SEC * 1000LL) rem = TL_MAX_SEC * 1000LL;
+        t->end_ms = now + rem;
+        return 1;
+    }
+    return 0;
+}
+
+int tl_startstop(Timer *t, long long now)
+{
+    switch (t->st) {
+    case TL_IDLE:
+        if (t->disp <= 0) return 0;
+        t->remembered = t->disp;
+        t->end_ms = now + (long long)t->disp * 1000;
+        t->ndig = 0;
+        t->st = TL_RUN;
+        return 1;
+    case TL_RUN:
+        t->rem_ms = t->end_ms - now;
+        if (t->rem_ms < 0) t->rem_ms = 0;
+        t->st = TL_PAUSE;
+        return 1;
+    case TL_PAUSE:
+        t->end_ms = now + t->rem_ms;
+        t->st = TL_RUN;
+        return 1;
+    case TL_ALARM:
+        return tl_stop_alarm(t);
+    }
+    return 0;
+}
+
+int tl_reset(Timer *t, long long now)
+{
+    (void)now;
+    if (t->st != TL_IDLE) {          /* running, paused or ringing */
+        t->st = TL_IDLE;
+        t->disp = t->remembered;
+    } else if (t->disp != t->remembered) {
+        t->disp = t->remembered;     /* back to the last measured time */
+    } else {
+        t->disp = 0;                 /* second press: clear to 0 */
+    }
+    t->ndig = 0;
+    return 1;
+}
+
+int tl_tick(Timer *t, long long now)
+{
+    if (t->st == TL_RUN && now >= t->end_ms) {
+        t->st = TL_ALARM;
+        t->alarm_ms = now;
+        return 1;
+    }
+    return 0;
+}
+
+long long tl_next_change_ms(const Timer *t, long long now)
+{
+    long long rem;
+    if (t->st != TL_RUN) return -1;
+    rem = t->end_ms - now;
+    if (rem <= 0) return 0;
+    return ((rem - 1) % 1000) + 1;
+}
+
+double tl_alarm_gain(double t, double fade_sec)
+{
+    if (fade_sec <= 0 || t >= fade_sec) return 1.0;
+    if (t < 0) t = 0;
+    return pow(10.0, -(1.0 - t / fade_sec) * TL_FADE_DB / 20.0);
+}
+
+double tl_volume_amp(int percent)
+{
+    double v;
+    if (percent <= 0) return 0;
+    if (percent > 100) percent = 100;
+    v = percent / 100.0;
+    return v * v;
+}
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+double tl_tone(long long n)
+{
+    double t = (double)n / TL_SR;
+    return 0.86 * sin(2 * M_PI * TL_TONE_HZ * t) + 0.14 * sin(4 * M_PI * TL_TONE_HZ * t);
+}
+
+double tl_pattern_env(double t)
+{
+    double ph = fmod(t, 1.0);
+    int k;
+    for (k = 0; k < 4; k++) {
+        double s = k * 0.12, e = s + 0.07;
+        if (ph >= s && ph < e) {
+            double a = (ph - s) / 0.004, r = (e - ph) / 0.004;
+            double v = a < r ? a : r;
+            return v > 1 ? 1 : v;
+        }
+    }
+    return 0;
+}
+
+short tl_alarm_sample(long long n, int vol, int fade_sec, int max_min)
+{
+    double t = (double)n / TL_SR, amp = tl_volume_amp(vol) * TL_PEAK * 32767;
+    if (t >= fade_sec + max_min * 60.0) return 0;
+    return (short)lrint(tl_tone(n) * tl_pattern_env(t) * tl_alarm_gain(t, fade_sec) * amp);
+}
+
+short tl_shot_sample(long n, long len, int vol, int pattern)
+{
+    double t = (double)n / TL_SR, env, amp = tl_volume_amp(vol) * TL_PEAK * 32767;
+    if (pattern) env = tl_pattern_env(t);
+    else {
+        double a = t / 0.003, r = (double)(len - n) / TL_SR / 0.006;
+        env = a < r ? a : r;
+        if (env > 1) env = 1;
+    }
+    return (short)lrint(tl_tone(n) * env * amp);
+}

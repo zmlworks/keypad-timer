@@ -1,0 +1,10 @@
+#define IDI_APP       1
+#define IDD_SETTINGS  100
+#define IDC_VOL       101
+#define IDC_VOLTXT    102
+#define IDC_FADE      103
+#define IDC_FADESPIN  104
+#define IDC_HOLD      105
+#define IDC_HOLDSPIN  106
+#define IDC_TOP       107
+#define IDC_TEST      108
