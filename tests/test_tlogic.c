@@ -83,34 +83,23 @@ int main(void)
     n++; if (fabs(tl_alarm_gain(15, 30) - pow(10, -TL_FADE_DB / 40)) > 1e-9) { fails++; puts("FAIL gainmid"); }
     n++; { double p = 0; int ok = 1; for (double s = 0; s <= 30; s += 0.5) { double g = tl_alarm_gain(s, 30); if (g < p) ok = 0; p = g; } if (!ok) { fails++; puts("FAIL monotonic"); } }
     n++; if (tl_alarm_gain(0, 0) != 1.0) { fails++; puts("FAIL nofade"); }
-    n++; if (tl_volume_amp(0) != 0 || tl_volume_amp(100) != 1.0 || tl_volume_amp(50) != 0.25) { fails++; puts("FAIL vol"); }
-    /* sounds: click peak == alarm peak at max volume; fade start is quiet; auto-stop */
+    /* sounds: click peak == alarm peak at full; quiet start; stops 2 min after ringing starts */
     {
-        int pk_click = 0, pk_a0 = 0, pk_amax = 0, pk_end = 0, nz_end = 0;
+        int pk_click = 0, pk_a0 = 0, pk_full = 0, pk_last = 0, nz_end = 0, v;
         long i, len = TL_SR * 45 / 1000;
-        FILE *f;
-        for (i = 0; i < len; i++) { int v = abs(tl_shot_sample(i, len, 60, 0)); if (v > pk_click) pk_click = v; }
-        for (i = 0; i < TL_SR; i++) { int v = abs(tl_alarm_sample(i, 60, 30, 3)); if (v > pk_a0) pk_a0 = v; }
-        for (i = 0; i < TL_SR; i++) { int v = abs(tl_alarm_sample(40LL * TL_SR + i, 60, 30, 3)); if (v > pk_amax) pk_amax = v; }
-        for (i = 0; i < TL_SR; i++) { int v = abs(tl_alarm_sample(209LL * TL_SR + i, 60, 30, 3)); if (v > pk_end) pk_end = v; }
-        for (i = 0; i < TL_SR; i++) nz_end |= tl_alarm_sample(210LL * TL_SR + i, 60, 30, 3) != 0;
-        printf("peaks: click %d, alarm@0s %d, alarm@40s %d, alarm@209s %d\n", pk_click, pk_a0, pk_amax, pk_end);
-        n++; if (abs(pk_click - pk_amax) > pk_amax / 50) { fails++; puts("FAIL click != alarm max"); }
-        n++; if (pk_a0 * 40 > pk_amax) { fails++; puts("FAIL fade start too loud"); }
-        n++; if (pk_end < pk_amax * 0.98) { fails++; puts("FAIL not at max before stop"); }
-        n++; if (nz_end) { fails++; puts("FAIL alarm did not stop at fade+3min"); }
-        n++; if (tl_shot_sample(100, len, 0, 0) != 0) { fails++; puts("FAIL vol0"); }
-        /* write a preview WAV of the first 40 s for listening */
-        if ((f = fopen("alarm-preview.wav", "wb"))) {
-            unsigned ns = 40 * TL_SR, db = ns * 2, v32; unsigned short v16;
-            fwrite("RIFF", 1, 4, f); v32 = 36 + db; fwrite(&v32, 4, 1, f); fwrite("WAVEfmt ", 1, 8, f);
-            v32 = 16; fwrite(&v32, 4, 1, f); v16 = 1; fwrite(&v16, 2, 1, f); fwrite(&v16, 2, 1, f);
-            v32 = TL_SR; fwrite(&v32, 4, 1, f); v32 = TL_SR * 2; fwrite(&v32, 4, 1, f);
-            v16 = 2; fwrite(&v16, 2, 1, f); v16 = 16; fwrite(&v16, 2, 1, f);
-            fwrite("data", 1, 4, f); fwrite(&db, 4, 1, f);
-            for (i = 0; i < (long)ns; i++) { short s = tl_alarm_sample(i, 60, 30, 3); fwrite(&s, 2, 1, f); }
-            fclose(f);
+        for (i = 0; i < len; i++) if ((v = abs(tl_click_sample(i, len))) > pk_click) pk_click = v;
+        for (i = 0; i < TL_SR; i++) {
+            if ((v = abs(tl_alarm_sample(i))) > pk_a0) pk_a0 = v;
+            if ((v = abs(tl_alarm_sample(40LL * TL_SR + i))) > pk_full) pk_full = v;
+            if ((v = abs(tl_alarm_sample(119LL * TL_SR + i))) > pk_last) pk_last = v;
+            nz_end |= tl_alarm_sample(120LL * TL_SR + i) != 0;
         }
+        printf("peaks: click %d, alarm@0s %d, @40s %d, @119s %d\n", pk_click, pk_a0, pk_full, pk_last);
+        n++; if (abs(pk_click - pk_full) > pk_full / 50) { fails++; puts("FAIL click != alarm full"); }
+        n++; if (abs(pk_full - (int)(TL_AMP * 32767)) > 400) { fails++; puts("FAIL level != 30 %"); }
+        n++; if (pk_a0 * 40 > pk_full) { fails++; puts("FAIL fade start too loud"); }
+        n++; if (pk_last < pk_full * 0.98) { fails++; puts("FAIL not full before end"); }
+        n++; if (nz_end) { fails++; puts("FAIL alarm did not stop at 2:00"); }
     }
     printf("%d checks, %d failures\n", n, fails);
     return fails != 0;

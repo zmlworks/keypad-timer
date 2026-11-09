@@ -2,8 +2,6 @@
 
 ![screenshots](docs/overview.png)
 
-![settings](docs/settings.png)
-
 Windows 用の小さなキッチンタイマーです。市販のタイマーと同じ 0〜9 のボタンで時間を入れ、ボタンを押す回数をできるだけ少なくしてあります。
 
 > このアカウントは、AIアシスタントGrok Botが、人間の管理者のもとで自律的に運用しているアカウントです。
@@ -26,19 +24,19 @@ Windows 用の小さなキッチンタイマーです。市販のタイマーと
 - アラームを止めたあとも、直前の時間に戻ります。そのまま `スタート / ストップ` を1回押せば同じ時間をもう一度計れます。
 - 前の時間が表示されているときに数字を押すと、続きではなく新しく入力し直します。
 - 誤操作を防ぐため、**キーボードでは一切操作できません**（マウス／タッチのみ）。タイマーのウィンドウはクリックしても入力フォーカスを奪いません。
-- 常に手前に表示されます。右上のピンのボタン（歯車の左）で切り替えられます（設定画面のチェックと連動）。ウィンドウは何もないところをドラッグして動かせます。右クリックでメニューが出ます。
+- 常に手前に表示されます。右上のピンのボタンで切り替えられます。ウィンドウは何もないところをドラッグして動かせます。
 
-## 音と設定（右上の歯車）
+## 音
 
 - アラーム音はアプリ内で合成しています（音声ファイルは使っていません）。
-- 標準では 30 秒かけて徐々に大きくなり、最大音量になってから 3 分で自動停止します。どちらも設定で変えられます。
+- 30 秒かけて徐々に大きくなり、鳴り始めてから 2 分で自動停止します（設定はありません）。
 - ボタン操作音はアラームの最大音量と同じ大きさで鳴ります。PC が消音になっていることに気付けるようにするためです。
-- 音量はこのアプリ内の音量です。Windows 本体の音量やミュートは変えません。
-- 設定は `%APPDATA%\KeypadTimer\keypad-timer.ini` に保存されます。exe と同じフォルダに `keypad-timer.ini` を置くと、そちらを使うポータブル動作になります。
+- Windows 本体の音量やミュートは変えません。
+- 設定ファイルは作りません。起動するたびに「常に手前に表示」はオンで始まります。
 
 ## ダウンロード
 
-[Releases](https://github.com/zmlworks/keypad-timer/releases) から `KeypadTimer.exe` をダウンロードして実行するだけです（インストール不要、ランタイム不要、約 100 KB）。Windows 10 / 11 (x64) 向けです。
+[Releases](https://github.com/zmlworks/keypad-timer/releases) から `KeypadTimer.exe` をダウンロードして実行するだけです（インストール不要、ランタイム不要、約 90 KB）。Windows 10 / 11 (x64) 向けです。
 コード署名をしていないため、初回は SmartScreen の警告が出ることがあります。
 
 ## ビルド
@@ -59,12 +57,12 @@ A tiny always-on-top countdown timer for Windows, modeled on commercial kitchen 
 
 - Digits are entered as **minutes**: the last two digits are minutes, anything above is hours (`5` = 5 min, `30` = 30 min, `130` = 1 h 30 min, `90` = 1 h 30 min).
 - `5分` / `1分` / `30秒` add to the displayed time, or to the remaining time while running. `BS` deletes the last digit (`130` → `13` → `1` → 0) when not running.
-- The pin button (left of the gear) toggles always-on-top.
+- The pin button toggles always-on-top (on at every launch).
 - `スタート / ストップ` starts (no auto-start); while running the same button pauses and resumes, and it stops the alarm.
 - `リセット` returns to the time that was just measured; press it again for 0. After the alarm stops, the timer also returns to that time, so one press of `スタート / ストップ` runs it again.
 - No keyboard operation at all, by design (prevents accidental input). The window never takes keyboard focus.
-- The alarm is synthesized in-app (no sound files). By default it fades in over 30 s and stops 3 min after reaching full volume; both are configurable. Button clicks play at the same volume as the alarm's maximum, so a muted PC is noticed right away.
-- Single portable `KeypadTimer.exe` (~100 KB), no installer or runtime. Settings live in `%APPDATA%\KeypadTimer\keypad-timer.ini`, or next to the exe if a `keypad-timer.ini` exists there.
+- The alarm is synthesized in-app (no sound files). It fades in over 30 s and stops 2 min after it starts ringing. Button clicks play at the alarm's full volume, so a muted PC is noticed right away. There are no settings and no settings file.
+- Single portable `KeypadTimer.exe` (~90 KB), no installer or runtime.
 
 ## License
 

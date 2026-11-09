@@ -160,54 +160,36 @@ double tl_alarm_gain(double t, double fade_sec)
     return pow(10.0, -(1.0 - t / fade_sec) * TL_FADE_DB / 20.0);
 }
 
-double tl_volume_amp(int percent)
-{
-    double v;
-    if (percent <= 0) return 0;
-    if (percent > 100) percent = 100;
-    v = percent / 100.0;
-    return v * v;
-}
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-double tl_tone(long long n)
+static double tone(long long n)
 {
     double t = (double)n / TL_SR;
     return 0.86 * sin(2 * M_PI * TL_TONE_HZ * t) + 0.14 * sin(4 * M_PI * TL_TONE_HZ * t);
 }
 
-double tl_pattern_env(double t)
+/* 4 beeps of 70 ms (with 4 ms soft edges) in each second */
+static double beeps(double t)
 {
     double ph = fmod(t, 1.0);
     int k;
     for (k = 0; k < 4; k++) {
         double s = k * 0.12, e = s + 0.07;
-        if (ph >= s && ph < e) {
-            double a = (ph - s) / 0.004, r = (e - ph) / 0.004;
-            double v = a < r ? a : r;
-            return v > 1 ? 1 : v;
-        }
+        if (ph >= s && ph < e) return fmin(1.0, fmin(ph - s, e - ph) / 0.004);
     }
     return 0;
 }
 
-short tl_alarm_sample(long long n, int vol, int fade_sec, int max_min)
+short tl_alarm_sample(long long n)
 {
-    double t = (double)n / TL_SR, amp = tl_volume_amp(vol) * TL_PEAK * 32767;
-    if (t >= fade_sec + max_min * 60.0) return 0;
-    return (short)lrint(tl_tone(n) * tl_pattern_env(t) * tl_alarm_gain(t, fade_sec) * amp);
+    double t = (double)n / TL_SR;
+    if (t >= TL_RING_SEC) return 0;
+    return (short)lrint(tone(n) * beeps(t) * tl_alarm_gain(t, TL_FADE_SEC) * TL_AMP * 32767);
 }
 
-short tl_shot_sample(long n, long len, int vol, int pattern)
+short tl_click_sample(long n, long len)
 {
-    double t = (double)n / TL_SR, env, amp = tl_volume_amp(vol) * TL_PEAK * 32767;
-    if (pattern) env = tl_pattern_env(t);
-    else {
-        double a = t / 0.003, r = (double)(len - n) / TL_SR / 0.006;
-        env = a < r ? a : r;
-        if (env > 1) env = 1;
-    }
-    return (short)lrint(tl_tone(n) * env * amp);
+    double env = fmin(1.0, fmin(n / (TL_SR * 0.003), (double)(len - n) / (TL_SR * 0.006)));
+    return (short)lrint(tone(n) * env * TL_AMP * 32767);
 }
