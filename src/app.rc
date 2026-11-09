@@ -31,8 +31,8 @@ BEGIN
 END
 
 1 VERSIONINFO
-FILEVERSION 0,1,0,0
-PRODUCTVERSION 0,1,0,0
+FILEVERSION 0,1,1,0
+PRODUCTVERSION 0,1,1,0
 FILEOS VOS_NT_WINDOWS32
 FILETYPE VFT_APP
 BEGIN
@@ -43,8 +43,8 @@ BEGIN
       VALUE "CompanyName", "zmlworks"
       VALUE "ProductName", "Keypad Timer"
       VALUE "FileDescription", "Keypad Timer (キーパッドタイマー)"
-      VALUE "FileVersion", "0.1.0"
-      VALUE "ProductVersion", "0.1.0"
+      VALUE "FileVersion", "0.1.1"
+      VALUE "ProductVersion", "0.1.1"
       VALUE "LegalCopyright", "Copyright (c) 2026 zmlworks, MIT License"
       VALUE "OriginalFilename", "KeypadTimer.exe"
     END

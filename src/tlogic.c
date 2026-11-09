@@ -115,6 +115,25 @@ int tl_reset(Timer *t, long long now)
     return 1;
 }
 
+int tl_backspace(Timer *t, long long now)
+{
+    (void)now;
+    if (t->st == TL_ALARM) return tl_stop_alarm(t);
+    if (t->st != TL_IDLE) return 0;
+    if (t->ndig == 0) {               /* shown time (recalled/added): edit it as H MM digits */
+        int e = t->disp / 3600 * 100 + t->disp / 60 % 60, n = 0, k;
+        if (e == 0 && t->disp == 0) return 0;
+        for (k = e; k > 0; k /= 10) n++;
+        t->entry = e;
+        t->ndig = n;
+    }
+    t->entry /= 10;
+    t->ndig--;
+    if (t->entry == 0) t->ndig = 0;   /* nothing left: next digit starts fresh */
+    t->disp = tl_entry_to_sec(t->entry);
+    return 1;
+}
+
 int tl_tick(Timer *t, long long now)
 {
     if (t->st == TL_RUN && now >= t->end_ms) {

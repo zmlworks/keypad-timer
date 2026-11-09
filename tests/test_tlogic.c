@@ -61,6 +61,22 @@ int main(void)
     EQ(t.st, TL_ALARM); tl_digit(&t, 7, 0); EQ(t.st, TL_IDLE); EQ(t.disp, 60);
     tl_startstop(&t, 0); tl_tick(&t, 60000); tl_add(&t, 60, 0); EQ(t.st, TL_IDLE); EQ(t.disp, 60);
     tl_startstop(&t, 0); tl_tick(&t, 60000); tl_reset(&t, 0); EQ(t.st, TL_IDLE); EQ(t.disp, 60);
+    /* backspace */
+    tl_init(&t, 0); keys(&t, "130"); EQ(t.disp, 5400);
+    tl_backspace(&t, 0); EQ(t.disp, 13 * 60);
+    tl_backspace(&t, 0); EQ(t.disp, 60);
+    tl_backspace(&t, 0); EQ(t.disp, 0);
+    EQ(tl_backspace(&t, 0), 0); EQ(t.disp, 0);
+    keys(&t, "5"); EQ(t.disp, 300);                        /* fresh after emptied */
+    tl_init(&t, 0); keys(&t, "13"); tl_backspace(&t, 0); keys(&t, "5"); EQ(t.disp, 15 * 60); /* append after BS */
+    tl_init(&t, 5400); tl_backspace(&t, 0); EQ(t.disp, 13 * 60); /* recalled 1:30:00 -> 13 */
+    keys(&t, "0"); EQ(t.disp, 5400);                        /* 13 -> 130 again */
+    tl_init(&t, 0); keys(&t, "5"); tl_add(&t, 30, 0); tl_backspace(&t, 0); EQ(t.disp, 0); /* 5:30 -> drops secs, 5 -> 0 */
+    tl_init(&t, 0); keys(&t, "1"); tl_startstop(&t, 0);
+    EQ(tl_backspace(&t, 1000), 0); EQ(t.st, TL_RUN);       /* ignored while running */
+    tl_startstop(&t, 2000); EQ(tl_backspace(&t, 0), 0); EQ(t.st, TL_PAUSE);
+    tl_startstop(&t, 2000); tl_tick(&t, 70000); EQ(t.st, TL_ALARM);
+    tl_backspace(&t, 0); EQ(t.st, TL_IDLE); EQ(t.disp, 60); /* stops the alarm only */
     /* fade curve */
     n++; if (fabs(tl_alarm_gain(0, 30) - pow(10, -TL_FADE_DB / 20)) > 1e-9) { fails++; puts("FAIL gain0"); }
     n++; if (fabs(tl_alarm_gain(30, 30) - 1) > 1e-9 || fabs(tl_alarm_gain(500, 30) - 1) > 1e-9) { fails++; puts("FAIL gainmax"); }

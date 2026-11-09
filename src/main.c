@@ -31,7 +31,7 @@
 #define W_LOG 240
 #define H_LOG 420
 
-enum { B_D0 = 0, /* 0..9 digits */ B_ADD5 = 10, B_ADD1, B_ADD30, B_RESET, B_START, B_SET, B_MIN, B_CLOSE, B_COUNT };
+enum { B_D0 = 0, /* 0..9 digits */ B_ADD5 = 10, B_ADD1, B_ADD30, B_BS, B_RESET, B_START, B_PIN, B_SET, B_CLOSE, B_COUNT };
 typedef struct { float x, y, w, h; } RF;
 static RF gBtn[B_COUNT];
 
@@ -46,12 +46,13 @@ static void Layout(void)
         int row = 2 - i / 3, col = i % 3;
         gBtn[B_D0 + 1 + i] = (RF){ m + col * (cw + gap), y + row * (rh + gap), cw, rh };
     }
-    gBtn[B_D0]    = (RF){ m, y + 3 * (rh + gap), 2 * cw + gap, rh };
+    gBtn[B_BS]    = (RF){ m, y + 3 * (rh + gap), cw, rh };            /* BS under 1 */
+    gBtn[B_D0]    = (RF){ m + cw + gap, y + 3 * (rh + gap), cw, rh };
     gBtn[B_RESET] = (RF){ m + 2 * (cw + gap), y + 3 * (rh + gap), cw, rh };
     gBtn[B_START] = (RF){ m, y + 4 * (rh + gap), W_LOG - 2 * m, 44 };
     gBtn[B_CLOSE] = (RF){ W_LOG - 32, 6, 20, 20 };
-    gBtn[B_MIN]   = (RF){ W_LOG - 56, 6, 20, 20 };
-    gBtn[B_SET]   = (RF){ W_LOG - 80, 6, 20, 20 };
+    gBtn[B_SET]   = (RF){ W_LOG - 56, 6, 20, 20 };
+    gBtn[B_PIN]   = (RF){ W_LOG - 80, 6, 20, 20 };
 }
 
 /* ---------- state ---------- */
@@ -267,7 +268,7 @@ static void Text(GpGraphics *g, const wchar_t *s, float x, float y, float w, flo
 }
 
 /* checkerboard texture: clear red with a faint pale-yellow cell */
-static GpTexture *gChk[3];
+static GpTexture *gChk[5];
 static ARGB Mix(ARGB a, ARGB b, float t)
 {
     int i;
@@ -278,27 +279,34 @@ static ARGB Mix(ARGB a, ARGB b, float t)
     }
     return r;
 }
-static GpTexture *MakeChecker(ARGB red, float yellow)
+static GpTexture *MakeChecker(ARGB c1, ARGB c2)
 {
     GpBitmap *bm;
     GpTexture *t;
     const int c = 6;
     int x, y;
-    ARGB pale = Mix(red, ARGB(red >> 24, 255, 238, 160), yellow);
     GdipCreateBitmapFromScan0(c * 2, c * 2, 0, PixelFormat32bppARGB, NULL, &bm);
     for (y = 0; y < c * 2; y++)
         for (x = 0; x < c * 2; x++)
-            GdipBitmapSetPixel(bm, x, y, ((x / c) ^ (y / c)) ? pale : red);
+            GdipBitmapSetPixel(bm, x, y, ((x / c) ^ (y / c)) ? c2 : c1);
     GdipCreateTexture((GpImage *)bm, WrapModeTile, &t);
     GdipSetTextureWrapMode(t, WrapModeTile);
     GdipDisposeImage((GpImage *)bm);
     return t;
 }
+/* clear red with a faint pale-yellow cell */
+static GpTexture *RedChecker(ARGB red, float yellow)
+{
+    return MakeChecker(red, Mix(red, ARGB(red >> 24, 255, 238, 160), yellow));
+}
+enum { TX_RED, TX_DEEP, TX_START, TX_CREAM, TX_FIVE };
 static void InitTextures(void)
 {
-    gChk[0] = MakeChecker(ARGB(232, 206, 26, 44), 0.15f);  /* keys */
-    gChk[1] = MakeChecker(ARGB(238, 168, 10, 30), 0.13f);  /* reset / add (deeper red) */
-    gChk[2] = MakeChecker(ARGB(242, 222, 34, 48), 0.17f);  /* start */
+    gChk[TX_RED]   = RedChecker(ARGB(232, 206, 26, 44), 0.15f);  /* keys */
+    gChk[TX_DEEP]  = RedChecker(ARGB(238, 168, 10, 30), 0.13f);  /* add / BS / reset */
+    gChk[TX_START] = RedChecker(ARGB(242, 222, 34, 48), 0.17f);  /* start */
+    gChk[TX_CREAM] = MakeChecker(ARGB(246, 250, 234, 186), ARGB(246, 255, 246, 214)); /* 2 4 6 8 */
+    gChk[TX_FIVE]  = RedChecker(ARGB(240, 178, 14, 34), 0.14f);  /* 5: a little darker */
 }
 
 /* ---------- 7-segment LCD ---------- */
@@ -324,7 +332,7 @@ static void VSeg(GpGraphics *g, GpBrush *b, float uc, float v0, float v1, float 
 }
 static void Digit(GpGraphics *g, GpBrush *on, GpBrush *off, int d, float x, float y, float w, float h, float t)
 {
-    const float k = 0.9f, hm = h / 2;
+    const float k = 1.0f, hm = h / 2;
     unsigned m = d < 0 ? 0 : SEG[d];
     GpBrush *b;
     b = (m & 0x01) ? on : off; HSeg(g, b, t / 2 + k, w - t / 2 - k, t / 2, t, x, y, h);
@@ -345,28 +353,6 @@ static void Colon(GpGraphics *g, GpBrush *b, float cx, float y, float h, float s
         Poly(g, b, q, 4, 0, y, h);
     }
 }
-/* indicators: 0 = run (triangle), 1 = pause (bars), 2 = alarm (bell) */
-static void Indicator(GpGraphics *g, GpBrush *b, int kind, float x, float y)
-{
-    GpPath *p;
-    if (kind == 0) {
-        GpPointF q[3] = { { x, y }, { x + 9, y + 5 }, { x, y + 10 } };
-        GdipFillPolygon(g, b, q, 3, FillModeAlternate);
-    } else if (kind == 1) {
-        GdipFillRectangle(g, b, x, y, 3.2f, 10);
-        GdipFillRectangle(g, b, x + 5.6f, y, 3.2f, 10);
-    } else {
-        GdipCreatePath(FillModeWinding, &p);
-        GdipAddPathArc(p, x + 1, y, 10, 12, 180, 180);
-        GdipAddPathLine(p, x + 11, y + 6, x + 12, y + 9);
-        GdipAddPathLine(p, x + 12, y + 9, x, y + 9);
-        GdipAddPathLine(p, x, y + 9, x + 1, y + 6);
-        GdipClosePathFigure(p);
-        GdipAddPathEllipse(p, x + 4.2f, y + 9.4f, 3.6f, 2.6f);
-        GdipFillPath(g, b, p);
-        GdipDeletePath(p);
-    }
-}
 static void DrawLcd(GpGraphics *g, long long now)
 {
     const float bx = 12, by = 32, bw = W_LOG - 24, bh = 94;
@@ -374,7 +360,7 @@ static void DrawLcd(GpGraphics *g, long long now)
     GpPath *p;
     GpSolidFill *on, *off;
     int s = tl_display(&gT, now), dig[6], i, lit;
-    float x, dw = 21, dh = 39, th = 4.6f, gapd = 5.0f, colw = 11, y = py + 19;
+    float x, dw = 24.5f, dh = 58, th = 7.2f, gapd = 4.4f, colw = 10.5f, y = py + 12;
     /* bezel */
     p = RRect(bx, by, bw, bh, 11);
     FillGrad(g, p, bx, by, bw, bh, ARGB(255, 44, 40, 42), ARGB(255, 14, 12, 14));
@@ -388,31 +374,19 @@ static void DrawLcd(GpGraphics *g, long long now)
     FillGrad(g, p, px, py, pw, 10, ARGB(60, 0, 0, 0), ARGB(0, 0, 0, 0));
     GdipDeletePath(p);
     GdipCreateSolidFill(ARGB(242, 24, 28, 22), &on);
-    GdipCreateSolidFill(ARGB(30, 30, 40, 24), &off);
-    /* indicators (right) and H / M / S captions over each digit group */
-    Indicator(g, (GpBrush *)(gT.st == TL_RUN ? on : off), 0, px + pw - 52, py + 5);
-    Indicator(g, (GpBrush *)(gT.st == TL_PAUSE ? on : off), 1, px + pw - 37, py + 5);
-    Indicator(g, (GpBrush *)(gT.st == TL_ALARM && gBlinkOn ? on : off), 2, px + pw - 22, py + 4);
-    {
-        static const wchar_t *cap[3] = { L"H", L"M", L"S" };
-        float gx = px + 9, grp = 2 * dw + gapd;
-        for (i = 0; i < 3; i++) {
-            float cx = gx + i * (grp + gapd + colw) + grp / 2 - 1.5f;
-            Text(g, cap[i], cx - 15, y + dh + 0.5f, 30, 11, 7.5f, 1, ARGB(105, 40, 50, 34), 1);
-        }
-    }
+    GdipCreateSolidFill(ARGB(46, 30, 40, 24), &off);
     /* digits HH:MM:SS (blank leading hour) */
     dig[0] = s / 36000; dig[1] = s / 3600 % 10;
     dig[2] = s / 600 % 6; dig[3] = s / 60 % 10;
     dig[4] = s % 60 / 10; dig[5] = s % 10;
     if (dig[0] == 0) dig[0] = -1;
     lit = !(gT.st == TL_ALARM && !gBlinkOn);
-    x = px + 9;
+    x = px + 3;
     for (i = 0; i < 6; i++) {
         Digit(g, (GpBrush *)on, (GpBrush *)off, lit ? dig[i] : -1, x, y, dw, dh, th);
         x += dw + gapd;
         if (i == 1 || i == 3) {
-            Colon(g, (GpBrush *)(lit ? on : off), x + colw / 2 - gapd / 2 - 0.5f, y, dh, 4.6f);
+            Colon(g, (GpBrush *)(lit ? on : off), x + colw / 2 - gapd / 2 - 0.5f, y, dh, 6.2f);
             x += colw;
         }
     }
@@ -430,7 +404,10 @@ static void DrawSysBtn(GpGraphics *g, int id)
     ARGB ink = ARGB(235, 255, 238, 230);
     GdipCreatePath(FillModeAlternate, &p);
     GdipAddPathEllipse(p, r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-    FillSolid(g, p, gPress == id ? ARGB(150, 70, 0, 10) : gHover == id ? ARGB(110, 255, 210, 200) : ARGB(60, 90, 0, 12));
+    if (id == B_PIN && gCfg.top)   /* pinned: dark background like StickyBB (#5A161C) */
+        FillSolid(g, p, gPress == id ? ARGB(255, 60, 10, 14) : gHover == id ? ARGB(255, 120, 50, 56) : ARGB(255, 90, 22, 28));
+    else
+        FillSolid(g, p, gPress == id ? ARGB(150, 70, 0, 10) : gHover == id ? ARGB(110, 255, 210, 200) : ARGB(60, 90, 0, 12));
     Stroke(g, p, ARGB(110, 255, 200, 200), 1);
     GdipDeletePath(p);
     GdipCreatePen1(ink, 1.7f, UnitWorld, &pen);
@@ -439,8 +416,31 @@ static void DrawSysBtn(GpGraphics *g, int id)
     if (id == B_CLOSE) {
         GdipDrawLine(g, pen, cx - 4, cy - 4, cx + 4, cy + 4);
         GdipDrawLine(g, pen, cx + 4, cy - 4, cx - 4, cy + 4);
-    } else if (id == B_MIN) {
-        GdipDrawLine(g, pen, cx - 4.5f, cy + 0.5f, cx + 4.5f, cy + 0.5f);
+    } else if (id == B_PIN) {
+        /* push pin (same shape as StickyBB): off = tilted outline, on = upright and filled */
+        static const float shape[8][2] = {
+            { -3.5f, -7.0f }, { 3.5f, -7.0f }, { 2.5f, -5.5f }, { 2.5f, -1.0f },
+            { 5.0f, 1.5f }, { -5.0f, 1.5f }, { -2.5f, -1.0f }, { -2.5f, -5.5f } };
+        const float u = 0.72f, cs = gCfg.top ? 1.0f : 0.7071f, sn = gCfg.top ? 0.0f : 0.7071f;
+        GpPointF pt[8];
+        int k;
+        GpPen *thin;
+        for (k = 0; k < 8; k++) {
+            float x = shape[k][0] * u, y = shape[k][1] * u;
+            pt[k].X = cx + x * cs - y * sn;
+            pt[k].Y = cy + x * sn + y * cs;
+        }
+        GdipCreatePen1(ink, 1.2f, UnitWorld, &thin);
+        GdipSetPenLineJoin(thin, LineJoinRound);
+        if (gCfg.top) {
+            GpSolidFill *b;
+            GdipCreateSolidFill(ink, &b);
+            GdipFillPolygon(g, (GpBrush *)b, pt, 8, FillModeAlternate);
+            GdipDeleteBrush((GpBrush *)b);
+        }
+        GdipDrawPolygon(g, thin, pt, 8);
+        GdipDrawLine(g, pen, cx - 1.5f * u * sn, cy + 1.5f * u * cs, cx - 7.0f * u * sn, cy + 7.0f * u * cs); /* needle */
+        GdipDeletePen(thin);
     } else {
         int k;
         GpPen *tp;
@@ -459,24 +459,47 @@ static const wchar_t *Label(int id)
 {
     static wchar_t d[2];
     switch (id) {
-    case B_ADD5: return L"＋5分";
-    case B_ADD1: return L"＋1分";
-    case B_ADD30: return L"＋30秒";
+    case B_ADD5: return L"5";
+    case B_ADD1: return L"1";
+    case B_ADD30: return L"30";
+    case B_BS: return L"BS";
     case B_RESET: return L"リセット";
-    case B_START: return gT.st == TL_RUN ? L"ストップ" : gT.st == TL_PAUSE ? L"再開" : gT.st == TL_ALARM ? L"アラーム停止" : L"スタート";
+    case B_START: return L"スタート / ストップ";   /* fixed label, like a store-bought timer */
     }
     d[0] = (wchar_t)(L'0' + id);
     d[1] = 0;
     return d;
 }
+static float TextWidth(const wchar_t *str, float size)
+{
+    GpFont *f;
+    GpStringFormat *sf;
+    GpRectF lay = { 0, 0, 1000, 100 }, box = { 0, 0, 0, 0 };
+    GpGraphics *g;
+    GpBitmap *bm;
+    if (!gFam || GdipCreateFont(gFam, size, FontStyleBold, UnitWorld, &f) != Ok) return 0;
+    GdipCreateBitmapFromScan0(4, 4, 0, PixelFormat32bppARGB, NULL, &bm);
+    GdipGetImageGraphicsContext((GpImage *)bm, &g);
+    GdipStringFormatGetGenericTypographic(&sf);
+    GdipMeasureString(g, str, -1, f, &lay, sf, &box, NULL, NULL);
+    GdipDeleteStringFormat(sf);
+    GdipDeleteGraphics(g);
+    GdipDisposeImage((GpImage *)bm);
+    GdipDeleteFont(f);
+    return box.Width;
+}
+static int IsCream(int id) { return id == 2 || id == 4 || id == 6 || id == 8; }
 static void DrawKey(GpGraphics *g, int id)
 {
     RF r = gBtn[id];
-    int pressed = gPress == id;
+    int pressed = gPress == id, cream = IsCream(id);
     float o = pressed ? 1.2f : 0;
     GpPath *p;
-    GpTexture *tex = id == B_START ? gChk[2] : (id >= B_ADD5 && id <= B_RESET) ? gChk[1] : gChk[0];
-    float fs = id < 10 ? 19 : id == B_START ? 16 : 13.5f;
+    GpTexture *tex = id == B_START ? gChk[TX_START] : (id >= B_ADD5 && id <= B_RESET) ? gChk[TX_DEEP]
+                   : cream ? gChk[TX_CREAM] : id == 5 ? gChk[TX_FIVE] : gChk[TX_RED];
+    float fs = id < 10 ? 20 : id == B_START ? 15 : id == B_BS ? 15 : 13.5f;
+    ARGB ink = cream ? ARGB(255, 150, 14, 32) : ARGB(250, 255, 250, 240);
+    ARGB shade = cream ? ARGB(150, 255, 255, 250) : ARGB(110, 70, 0, 8);
     /* drop shadow */
     p = RRect(r.x + 0.5f, r.y + 2.2f, r.w - 1, r.h, 9);
     FillSolid(g, p, ARGB(pressed ? 30 : 70, 60, 0, 6));
@@ -486,18 +509,34 @@ static void DrawKey(GpGraphics *g, int id)
     GdipTranslateTextureTransform(tex, r.x, r.y, MatrixOrderPrepend);
     GdipFillPath(g, (GpBrush *)tex, p);
     /* glossy top, refraction glow at the bottom */
-    FillGrad(g, p, r.x, r.y + o, r.w, r.h * 0.55f, ARGB(pressed ? 25 : 78, 255, 255, 255), ARGB(0, 255, 255, 255));
+    FillGrad(g, p, r.x, r.y + o, r.w, r.h * 0.55f, ARGB(pressed ? 25 : cream ? 90 : 78, 255, 255, 255), ARGB(0, 255, 255, 255));
     {
         GpPath *q = RRect(r.x + 3, r.y + r.h * 0.55f + o, r.w - 6, r.h * 0.45f - 2.5f, 7);
-        FillGrad(g, q, r.x, r.y + r.h * 0.55f + o, r.w, r.h * 0.45f, ARGB(0, 255, 120, 110), ARGB(pressed ? 20 : 55, 255, 150, 120));
+        if (cream) FillGrad(g, q, r.x, r.y + r.h * 0.55f + o, r.w, r.h * 0.45f, ARGB(0, 255, 210, 140), ARGB(pressed ? 20 : 60, 240, 190, 120));
+        else FillGrad(g, q, r.x, r.y + r.h * 0.55f + o, r.w, r.h * 0.45f, ARGB(0, 255, 120, 110), ARGB(pressed ? 20 : 55, 255, 150, 120));
         GdipDeletePath(q);
     }
     if (pressed) FillSolid(g, p, ARGB(55, 50, 0, 8));
     else if (gHover == id) FillSolid(g, p, ARGB(26, 255, 245, 220));
-    Stroke(g, p, ARGB(150, 255, 196, 196), 1.0f);
+    Stroke(g, p, cream ? ARGB(200, 255, 250, 235) : ARGB(150, 255, 196, 196), 1.0f);
     GdipDeletePath(p);
-    Text(g, Label(id), r.x, r.y + o + 1.2f, r.w, r.h, fs, 1, ARGB(110, 70, 0, 8), 1);
-    Text(g, Label(id), r.x, r.y + o, r.w, r.h, fs, 1, ARGB(250, 255, 250, 240), 1);
+    if (id >= B_ADD5 && id <= B_ADD30) {
+        /* large number + small unit, centred as a pair */
+        const wchar_t *num = Label(id), *unit = id == B_ADD30 ? L"秒" : L"分";
+        float big = 19, small = 10.5f, wn = TextWidth(num, big), wu = TextWidth(unit, small), gap = 1.5f;
+        float x0 = r.x + (r.w - wn - gap - wu) / 2, cy = r.y + o + r.h / 2;
+        float nb = cy + big * 0.62f;   /* common baseline-ish bottom */
+        int k;
+        for (k = 0; k < 2; k++) {
+            float dy = k == 0 ? 1.2f : 0;
+            ARGB c = k == 0 ? shade : ink;
+            Text(g, num, x0 - 4, nb - big * 1.3f + dy, wn + 8, big * 1.3f, big, 1, c, 1);
+            Text(g, unit, x0 + wn + gap - 4, nb - small * 1.45f + dy - 0.5f, wu + 8, small * 1.3f, small, 1, c, 1);
+        }
+        return;
+    }
+    Text(g, Label(id), r.x, r.y + o + 1.2f, r.w, r.h, fs, 1, shade, 1);
+    Text(g, Label(id), r.x, r.y + o, r.w, r.h, fs, 1, ink, 1);
 }
 
 static void DrawAll(GpGraphics *g, long long now)
@@ -509,8 +548,19 @@ static void DrawAll(GpGraphics *g, long long now)
     GdipSetTextRenderingHint(g, TextRenderingHintAntiAlias);
     GdipSetCompositingQuality(g, CompositingQualityHighQuality);
     /* body: see-through crystal red */
+    /* body: opaque, drawn to look like clear red plastic (not actually see-through) */
     p = RRect(0.5f, 0.5f, W_LOG - 1, H_LOG - 1, 20);
-    FillGrad(g, p, 0, 0, W_LOG, H_LOG, ARGB(214, 214, 30, 50), ARGB(228, 128, 4, 22));
+    FillGrad(g, p, 0, 0, W_LOG, H_LOG, ARGB(255, 222, 34, 54), ARGB(255, 138, 6, 26));
+    {   /* inner glow: light passing through thick clear plastic */
+        GpPathGradient *pg;
+        ARGB edge = ARGB(0, 255, 90, 100);
+        int n = 1;
+        GdipCreatePathGradientFromPath(p, &pg);
+        GdipSetPathGradientCenterColor(pg, ARGB(70, 255, 110, 120));
+        GdipSetPathGradientSurroundColorsWithCount(pg, &edge, &n);
+        GdipFillPath(g, (GpBrush *)pg, p);
+        GdipDeleteBrush((GpBrush *)pg);
+    }
     GdipSetClipPath(g, p, CombineModeReplace);
     {   /* diagonal light streaks like clear plastic */
         GpSolidFill *b;
@@ -534,11 +584,11 @@ static void DrawAll(GpGraphics *g, long long now)
     GdipDeletePath(p);
     Text(g, L"KEYPAD TIMER", 16, 6, 140, 20, 10.5f, 1, ARGB(120, 90, 0, 10), 0);
     Text(g, L"KEYPAD TIMER", 16, 5, 140, 20, 10.5f, 1, ARGB(215, 255, 232, 220), 0);
+    DrawSysBtn(g, B_PIN);
     DrawSysBtn(g, B_SET);
-    DrawSysBtn(g, B_MIN);
     DrawSysBtn(g, B_CLOSE);
     DrawLcd(g, now);
-    for (i = 0; i < B_SET; i++) DrawKey(g, i);
+    for (i = 0; i < B_PIN; i++) DrawKey(g, i);
 }
 
 /* Render into a premultiplied 32bpp DIB; returns the bitmap (caller frees). */
@@ -630,13 +680,14 @@ static void LeaveAlarmIfNeeded(TLState before)
     }
 }
 
+static void ApplyTopmost(void);
 static void Press(int id)
 {
     long long now = Now();
     TLState before = gT.st;
     int changed = 0;
     if (id == B_CLOSE) { PostMessageW(gWnd, WM_CLOSE, 0, 0); return; }
-    if (id == B_MIN) { ShowWindow(gWnd, SW_MINIMIZE); return; }
+    if (id == B_PIN) { gCfg.top = !gCfg.top; ApplyTopmost(); SaveCfg(); Render(); return; }
     if (id == B_SET) { PostMessageW(gWnd, WM_COMMAND, 1, 0); return; }
     if (before == TL_ALARM) AlarmStop();   /* silence first, then click */
     PlayShot(0.045, 0);
@@ -645,6 +696,7 @@ static void Press(int id)
     else if (id == B_ADD1) changed = tl_add(&gT, 60, now);
     else if (id == B_ADD30) changed = tl_add(&gT, 30, now);
     else if (id == B_RESET) changed = tl_reset(&gT, now);
+    else if (id == B_BS) changed = tl_backspace(&gT, now);
     else if (id == B_START) changed = tl_startstop(&gT, now);
     (void)changed;
     LeaveAlarmIfNeeded(before);
@@ -750,7 +802,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (id < 0) return 0;
         gPress = id;
         SetCapture(h);
-        if (id < B_SET) Press(id);
+        if (id < B_PIN) Press(id);
         Render();
         return 0;
     }
@@ -759,7 +811,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         gPress = -1;
         ReleaseCapture();
         Render();
-        if (id >= B_SET && id == over) Press(id);  /* window buttons act on release */
+        if (id >= B_PIN && id == over) Press(id);  /* window buttons act on release */
         return 0;
     }
     case WM_CAPTURECHANGED:
@@ -791,7 +843,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         AppendMenuW(m, MF_STRING, 4, L"終了");
         cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, GET_X_LPARAM(lp), GET_Y_LPARAM(lp), 0, h, NULL);
         DestroyMenu(m);
-        if (cmd == 2) { gCfg.top = !gCfg.top; ApplyTopmost(); SaveCfg(); }
+        if (cmd == 2) { gCfg.top = !gCfg.top; ApplyTopmost(); SaveCfg(); Render(); }
         else if (cmd == 3) ShowWindow(h, SW_MINIMIZE);
         else if (cmd == 4) PostMessageW(h, WM_CLOSE, 0, 0);
         else if (cmd == 1) PostMessageW(h, WM_COMMAND, 1, 0);
@@ -803,6 +855,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 ApplyTopmost();
                 SaveCfg();
             }
+            Render();   /* pin button reflects the checkbox */
         }
         return 0;
     case WM_TIMER:
@@ -880,6 +933,8 @@ static void Shot(const wchar_t *file, const wchar_t *what, float scale)
     GpBitmap *bm;
     long long t0 = 1000000;
     tl_init(&gT, 0);
+    if (!wcscmp(what, L"unpinned")) gCfg.top = 0;
+    if (!wcscmp(what, L"bs")) { tl_digit(&gT, 1, 0); tl_digit(&gT, 3, 0); tl_digit(&gT, 0, 0); tl_backspace(&gT, 0); gPress = B_BS; }
     if (!wcscmp(what, L"entered")) { tl_digit(&gT, 1, 0); tl_digit(&gT, 3, 0); tl_digit(&gT, 0, 0); }
     else if (!wcscmp(what, L"pressed")) { tl_digit(&gT, 5, 0); gPress = 5; }
     else if (!wcscmp(what, L"running") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm") || !wcscmp(what, L"reset")) {

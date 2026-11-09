@@ -19,13 +19,14 @@ Windows 用の小さなキッチンタイマーです。市販のタイマーと
 | `9` `0` | 1:30:00（60分以上は繰り上がり） |
 
 - 数字は **分** として入ります。下2桁が分、それより上が時間です。秒はふだん使わないので数字では入りません。
-- `＋5分` `＋1分` `＋30秒` は表示中の時間に足します。計測中に押すと残り時間が延びます。
-- `スタート` で開始します（自動では始まりません）。計測中に押すと一時停止、もう一度押すと再開します。
+- `5分` `1分` `30秒` は表示中の時間に足します。計測中に押すと残り時間が延びます。
+- `BS` は最後に入れた数字を1桁消します（`130` → `13` → `1` → 0）。計測中・一時停止中は効きません。
+- `スタート / ストップ` で開始します（自動では始まりません）。計測中に押すと一時停止、もう一度押すと再開します。アラーム中に押すと止まります。
 - `リセット` を押すと、直前に計測していた時間に戻ります。もう一度押すと 0 になります。
-- アラームを止めたあとも、直前の時間に戻ります。そのまま `スタート` を1回押せば同じ時間をもう一度計れます。
+- アラームを止めたあとも、直前の時間に戻ります。そのまま `スタート / ストップ` を1回押せば同じ時間をもう一度計れます。
 - 前の時間が表示されているときに数字を押すと、続きではなく新しく入力し直します。
 - 誤操作を防ぐため、**キーボードでは一切操作できません**（マウス／タッチのみ）。タイマーのウィンドウはクリックしても入力フォーカスを奪いません。
-- 常に手前に表示されます（設定で切り替え可能）。ウィンドウは何もないところをドラッグして動かせます。右クリックでメニューが出ます。
+- 常に手前に表示されます。右上のピンのボタン（歯車の左）で切り替えられます（設定画面のチェックと連動）。ウィンドウは何もないところをドラッグして動かせます。右クリックでメニューが出ます。
 
 ## 音と設定（右上の歯車）
 
@@ -57,9 +58,10 @@ Win32 API と GDI+（Windows 標準）だけで書いた C のプログラムで
 A tiny always-on-top countdown timer for Windows, modeled on commercial kitchen timers with a 0–9 keypad.
 
 - Digits are entered as **minutes**: the last two digits are minutes, anything above is hours (`5` = 5 min, `30` = 30 min, `130` = 1 h 30 min, `90` = 1 h 30 min).
-- `＋5分` / `＋1分` / `＋30秒` add to the displayed time, or to the remaining time while running.
-- `スタート` starts (no auto-start); while running the same button pauses and resumes.
-- `リセット` returns to the time that was just measured; press it again for 0. After the alarm stops, the timer also returns to that time, so one press of `スタート` runs it again.
+- `5分` / `1分` / `30秒` add to the displayed time, or to the remaining time while running. `BS` deletes the last digit (`130` → `13` → `1` → 0) when not running.
+- The pin button (left of the gear) toggles always-on-top.
+- `スタート / ストップ` starts (no auto-start); while running the same button pauses and resumes, and it stops the alarm.
+- `リセット` returns to the time that was just measured; press it again for 0. After the alarm stops, the timer also returns to that time, so one press of `スタート / ストップ` runs it again.
 - No keyboard operation at all, by design (prevents accidental input). The window never takes keyboard focus.
 - The alarm is synthesized in-app (no sound files). By default it fades in over 30 s and stops 3 min after reaching full volume; both are configurable. Button clicks play at the same volume as the alarm's maximum, so a muted PC is noticed right away.
 - Single portable `KeypadTimer.exe` (~100 KB), no installer or runtime. Settings live in `%APPDATA%\KeypadTimer\keypad-timer.ini`, or next to the exe if a `keypad-timer.ini` exists there.

@@ -26,6 +26,7 @@ int  tl_digit(Timer *t, int d, long long now);
 int  tl_add(Timer *t, int sec, long long now);
 int  tl_startstop(Timer *t, long long now);
 int  tl_reset(Timer *t, long long now);
+int  tl_backspace(Timer *t, long long now); /* delete the last digit (idle only) */
 int  tl_stop_alarm(Timer *t);
 /* Returns 1 when a running timer has just reached 0 (enters ALARM). */
 int  tl_tick(Timer *t, long long now);
