@@ -9,6 +9,7 @@ void tl_init(Timer *t, int remembered)
     t->st = TL_IDLE;
     t->remembered = clampsec(remembered);
     t->disp = t->remembered;
+    t->sw = 0;
     t->end_ms = t->rem_ms = t->alarm_ms = 0;
     t->entry = 0;
     t->ndig = 0;
@@ -20,13 +21,19 @@ int tl_entry_to_sec(int entry)
     return clampsec((long long)h * 3600 + (long long)m * 60);
 }
 
-static long long ceil_sec(long long ms) { return ms <= 0 ? 0 : (ms + 999) / 1000; }
+/* RUN/PAUSE counter in ms: timer = ms left, stopwatch = ms elapsed (capped) */
+static long long value_ms(const Timer *t, long long now)
+{
+    long long v = t->st == TL_PAUSE ? t->rem_ms : t->sw ? now - t->end_ms : t->end_ms - now;
+    return v < 0 ? 0 : v > TL_MAX_SEC * 1000LL ? TL_MAX_SEC * 1000LL : v;
+}
 
 int tl_display(const Timer *t, long long now)
 {
+    long long v = value_ms(t, now);
     switch (t->st) {
-    case TL_RUN:   return (int)ceil_sec(t->end_ms - now);
-    case TL_PAUSE: return (int)ceil_sec(t->rem_ms);
+    case TL_RUN:
+    case TL_PAUSE: return (int)(t->sw ? v / 1000 : (v + 999) / 1000);
     case TL_ALARM: return 0;
     default:       return t->disp;
     }
@@ -56,6 +63,7 @@ int tl_digit(Timer *t, int d, long long now)
 int tl_add(Timer *t, int sec, long long now)
 {
     long long rem;
+    if (t->sw && t->st != TL_IDLE) return 0;   /* nothing to add to a stopwatch */
     switch (t->st) {
     case TL_ALARM: return tl_stop_alarm(t);
     case TL_IDLE:
@@ -78,20 +86,19 @@ int tl_add(Timer *t, int sec, long long now)
 int tl_startstop(Timer *t, long long now)
 {
     switch (t->st) {
-    case TL_IDLE:
-        if (t->disp <= 0) return 0;
+    case TL_IDLE:   /* a time shown starts the timer; 0:00:00 starts the stopwatch */
+        t->sw = t->disp <= 0;
         t->remembered = t->disp;
-        t->end_ms = now + (long long)t->disp * 1000;
+        t->end_ms = t->sw ? now : now + (long long)t->disp * 1000;
         t->ndig = 0;
         t->st = TL_RUN;
         return 1;
     case TL_RUN:
-        t->rem_ms = t->end_ms - now;
-        if (t->rem_ms < 0) t->rem_ms = 0;
+        t->rem_ms = value_ms(t, now);
         t->st = TL_PAUSE;
         return 1;
     case TL_PAUSE:
-        t->end_ms = now + t->rem_ms;
+        t->end_ms = t->sw ? now - t->rem_ms : now + t->rem_ms;
         t->st = TL_RUN;
         return 1;
     case TL_ALARM:
@@ -111,6 +118,7 @@ int tl_reset(Timer *t, long long now)
     } else {
         t->disp = 0;                 /* second press: clear to 0 */
     }
+    t->sw = 0;
     t->ndig = 0;
     return 1;
 }
@@ -136,7 +144,7 @@ int tl_backspace(Timer *t, long long now)
 
 int tl_tick(Timer *t, long long now)
 {
-    if (t->st == TL_RUN && now >= t->end_ms) {
+    if (t->st == TL_RUN && !t->sw && now >= t->end_ms) {
         t->st = TL_ALARM;
         t->alarm_ms = now;
         return 1;
@@ -144,13 +152,19 @@ int tl_tick(Timer *t, long long now)
     return 0;
 }
 
+int tl_colon_on(const Timer *t, long long now)
+{
+    long long v = value_ms(t, now);
+    if (t->st != TL_RUN || (t->sw && v >= TL_MAX_SEC * 1000LL)) return 1;
+    return t->sw ? v % 1000 < 500 : (v + 999) % 1000 >= 500;
+}
+
 long long tl_next_change_ms(const Timer *t, long long now)
 {
-    long long rem;
-    if (t->st != TL_RUN) return -1;
-    rem = t->end_ms - now;
-    if (rem <= 0) return 0;
-    return ((rem - 1) % 1000) + 1;
+    long long v = value_ms(t, now);
+    if (t->st != TL_RUN || (t->sw && v >= TL_MAX_SEC * 1000LL)) return -1;
+    if (t->sw) return 500 - v % 500;
+    return v <= 0 ? 0 : (v - 1) % 500 + 1;
 }
 
 double tl_alarm_gain(double t, double fade_sec)

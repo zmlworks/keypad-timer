@@ -10,8 +10,9 @@ typedef enum { TL_IDLE, TL_RUN, TL_PAUSE, TL_ALARM } TLState;
 typedef struct {
     TLState st;
     int disp;            /* IDLE: seconds shown */
-    long long end_ms;    /* RUN: absolute end time (ms) */
-    long long rem_ms;    /* PAUSE: remaining ms */
+    int sw;              /* 1 = stopwatch (counts up), started with 0:00:00 shown */
+    long long end_ms;    /* RUN: timer end time, or stopwatch start time (ms) */
+    long long rem_ms;    /* PAUSE: timer ms left, or stopwatch ms elapsed */
     long long alarm_ms;  /* ALARM: time the alarm started */
     int remembered;      /* the time of the last START from IDLE */
     int entry;           /* digits typed, as integer HMM (max 4 digits) */
@@ -30,7 +31,9 @@ int  tl_backspace(Timer *t, long long now); /* delete the last digit (idle only)
 int  tl_stop_alarm(Timer *t);
 /* Returns 1 when a running timer has just reached 0 (enters ALARM). */
 int  tl_tick(Timer *t, long long now);
-/* ms until the shown second changes (RUN only), else -1 */
+/* RUN: 1 while the colon is lit (first half of each second); otherwise always 1 */
+int  tl_colon_on(const Timer *t, long long now);
+/* ms until the shown second or the colon changes (RUN only), else -1 */
 long long tl_next_change_ms(const Timer *t, long long now);
 /* Alarm gain 0..1 at t seconds after the alarm started (fade-in). */
 double tl_alarm_gain(double t, double fade_sec);

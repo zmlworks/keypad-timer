@@ -25,7 +25,8 @@ int main(void)
     tl_init(&t, 0); keys(&t, "3");
     EQ(tl_startstop(&t, 1000), 1); EQ(t.st, TL_RUN); EQ(t.remembered, 180);
     EQ(tl_display(&t, 1000), 180); EQ(tl_display(&t, 1001), 180); EQ(tl_display(&t, 2000), 179);
-    EQ(tl_next_change_ms(&t, 1000), 1000); EQ(tl_next_change_ms(&t, 1250), 750);
+    EQ(tl_next_change_ms(&t, 1000), 500); EQ(tl_next_change_ms(&t, 1250), 250); EQ(tl_next_change_ms(&t, 1600), 400);
+    EQ(tl_colon_on(&t, 1000), 1); EQ(tl_colon_on(&t, 1499), 1); EQ(tl_colon_on(&t, 1500), 0); EQ(tl_colon_on(&t, 2000), 1);
     EQ(tl_tick(&t, 180999), 0); EQ(tl_display(&t, 180999), 1);
     EQ(tl_tick(&t, 181000), 1); EQ(t.st, TL_ALARM); EQ(tl_display(&t, 181000), 0);
     EQ(tl_startstop(&t, 182000), 1); EQ(t.st, TL_IDLE); EQ(t.disp, 180);
@@ -39,8 +40,21 @@ int main(void)
     keys(&t, "1"); EQ(t.disp, 60); keys(&t, "0"); EQ(t.disp, 600);
     /* reset while typing returns to remembered */
     tl_reset(&t, 0); EQ(t.disp, 180);
-    /* start with 0 shown is ignored */
-    tl_init(&t, 0); EQ(tl_startstop(&t, 0), 0); EQ(t.st, TL_IDLE);
+    /* stopwatch: START with 0:00:00 shown counts up */
+    tl_init(&t, 180);  tl_reset(&t, 0); EQ(t.disp, 0);
+    EQ(tl_startstop(&t, 1000), 1); EQ(t.st, TL_RUN); EQ(t.sw, 1);
+    EQ(tl_display(&t, 1000), 0); EQ(tl_display(&t, 1999), 0); EQ(tl_display(&t, 2000), 1); EQ(tl_display(&t, 61000 + 999), 60);
+    EQ(tl_colon_on(&t, 1000), 1); EQ(tl_colon_on(&t, 1500), 0); EQ(tl_next_change_ms(&t, 1200), 300);
+    EQ(tl_tick(&t, 999999999), 0); EQ(t.st, TL_RUN);                     /* never rings */
+    keys(&t, "5"); tl_add(&t, 60, 5000); tl_backspace(&t, 5000); EQ(tl_display(&t, 5000), 4); /* ignored */
+    tl_startstop(&t, 5500); EQ(t.st, TL_PAUSE); EQ(tl_display(&t, 99999), 4); EQ(tl_colon_on(&t, 5800), 1);
+    tl_add(&t, 300, 0); EQ(tl_display(&t, 0), 4);
+    tl_startstop(&t, 10000); EQ(tl_display(&t, 10500), 5);               /* resumes from 4.5 s */
+    tl_reset(&t, 11000); EQ(t.st, TL_IDLE); EQ(t.disp, 0); EQ(t.sw, 0);
+    tl_reset(&t, 0); EQ(t.disp, 0);                                       /* stays 0 */
+    keys(&t, "3"); EQ(t.disp, 180); tl_startstop(&t, 0); EQ(t.sw, 0);    /* normal timer again */
+    tl_init(&t, 0); tl_startstop(&t, 0);
+    EQ(tl_display(&t, 400000000LL), TL_MAX_SEC); EQ(tl_next_change_ms(&t, 400000000LL), -1); /* capped */
     /* pause/resume */
     tl_init(&t, 0); keys(&t, "1"); tl_startstop(&t, 0);
     tl_startstop(&t, 10500); EQ(t.st, TL_PAUSE); EQ(tl_display(&t, 99999), 50);

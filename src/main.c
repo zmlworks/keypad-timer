@@ -41,10 +41,8 @@ static void Layout(void)
 static HWND gWnd;
 static Timer gT;
 static float gScale = 1;
-static int gHover = -1, gPress = -1, gTop = 1, gBlinkOn = 1, gRinging;
+static int gHover = -1, gPress = -1, gTop = 0, gBlinkOn = 1, gRinging;
 static GpFontFamily *gFam;
-static GpTexture *gTex[4];
-enum { TX_RED, TX_DEEP, TX_CREAM, TX_FIVE };
 enum { TM_TICK = 1, TM_ALARM, TM_CLICKCLOSE };
 
 static long long Now(void) { return (long long)GetTickCount64(); }
@@ -152,28 +150,12 @@ static float Text(GpGraphics *g, const wchar_t *s, RF r, float size, ARGB c, int
     GdipDeleteFont(f);
     return box.Width;
 }
-static GpTexture *Checker(ARGB c1, ARGB c2)
-{
-    GpBitmap *bm;
-    GpTexture *t;
-    int x, y;
-    GdipCreateBitmapFromScan0(12, 12, 0, PixelFormat32bppARGB, NULL, &bm);
-    for (y = 0; y < 12; y++)
-        for (x = 0; x < 12; x++) GdipBitmapSetPixel(bm, x, y, ((x / 6) ^ (y / 6)) ? c2 : c1);
-    GdipCreateTexture((GpImage *)bm, WrapModeTile, &t);
-    GdipDisposeImage((GpImage *)bm);
-    return t;
-}
 static void InitGraphics(void)
 {
     static const wchar_t *names[] = { L"Meiryo UI", L"Yu Gothic UI", L"Meiryo", L"Noto Sans CJK JP", L"Segoe UI" };
     int i;
     for (i = 0; i < 5 && GdipCreateFontFamilyFromName(names[i], NULL, &gFam) != Ok; i++) {}
     if (i == 5) GdipGetGenericFontFamilySansSerif(&gFam);
-    gTex[TX_RED]   = Checker(ARGB(255, 226, 52, 66), ARGB(255, 231, 70, 76));  /* red, faint yellowish cell */
-    gTex[TX_DEEP]  = Checker(ARGB(255, 140, 12, 30), ARGB(255, 148, 28, 40));
-    gTex[TX_CREAM] = Checker(ARGB(255, 250, 236, 196), ARGB(255, 253, 243, 214));
-    gTex[TX_FIVE]  = Checker(ARGB(255, 204, 34, 52), ARGB(255, 210, 52, 62));
 }
 
 /* 7-segment digits, slanted; unlit segments stay faintly visible */
@@ -207,8 +189,9 @@ static void Digit(GpGraphics *g, GpBrush *on, GpBrush *off, int d, float x, floa
 }
 static void DrawLcd(GpGraphics *g, long long now)
 {
-    const float dw = 24.5f, dh = 58, th = 7.2f, gap = 4.4f, colw = 10.5f, y = 50;
-    int s = tl_display(&gT, now), dig[6], i, lit = !(gT.st == TL_ALARM && !gBlinkOn);
+    static const wchar_t *cap[3] = { L"H", L"M", L"S" };
+    const float dw = 24.5f, dh = 52, th = 7, gap = 4.4f, colw = 10.5f, y = 45;
+    int s = tl_display(&gT, now), dig[6], i, lit = !(gT.st == TL_ALARM && !gBlinkOn), colon = lit && tl_colon_on(&gT, now);
     float x = 21, cs = 6.2f;
     GpSolidFill *on, *off;
     FillRRc(g, (RF){ 12, 32, W_LOG - 24, 94 }, 10, ARGB(255, 34, 30, 32));     /* bezel */
@@ -218,6 +201,8 @@ static void DrawLcd(GpGraphics *g, long long now)
     dig[0] = s / 36000 ? s / 36000 : -1; dig[1] = s / 3600 % 10;   /* H H : M M : S S */
     dig[2] = s / 600 % 6; dig[3] = s / 60 % 10;
     dig[4] = s % 60 / 10; dig[5] = s % 10;
+    for (i = 0; i < 3; i++)   /* H / M / S under each digit pair */
+        Text(g, cap[i], (RF){ x + i * (2 * (dw + gap) + colw), y + dh, 2 * dw + gap, 14 }, 8, ARGB(150, 40, 50, 34), 0);
     for (i = 0; i < 6; i++) {
         Digit(g, (GpBrush *)on, (GpBrush *)off, lit ? dig[i] : -1, x, y, dw, dh, th);
         x += dw + gap;
@@ -225,7 +210,7 @@ static void DrawLcd(GpGraphics *g, long long now)
             float c = x + colw / 2 - gap / 2 - 0.5f, v;
             for (v = 0.30f; v < 0.8f; v += 0.40f) {   /* colon: two slanted squares */
                 float q[8] = { c - cs / 2, dh * v - cs / 2, c + cs / 2, dh * v - cs / 2, c + cs / 2, dh * v + cs / 2, c - cs / 2, dh * v + cs / 2 };
-                Poly(g, (GpBrush *)(lit ? on : off), q, 4, 0, y, dh);
+                Poly(g, (GpBrush *)(colon ? on : off), q, 4, 0, y, dh);   /* blinks while running */
             }
             x += colw;
         }
@@ -276,14 +261,12 @@ static void DrawKey(GpGraphics *g, int id)
     static const wchar_t *lab[] = { L"5", L"1", L"30", L"BS", L"リセット", L"スタート / ストップ" };
     RF r = gBtn[id];
     int cream = id == 2 || id == 4 || id == 6 || id == 8;
-    GpTexture *t = gTex[id >= B_ADD5 && id <= B_RESET ? TX_DEEP : id == B_START ? TX_RED
-                        : cream ? TX_CREAM : id == 5 ? TX_FIVE : TX_RED];
+    ARGB fill = id >= B_ADD5 && id <= B_RESET ? ARGB(255, 140, 12, 30) : cream ? ARGB(255, 251, 238, 200)
+              : id == 5 ? ARGB(255, 204, 34, 52) : ARGB(255, 226, 52, 66);
     ARGB ink = cream ? ARGB(255, 150, 14, 32) : ARGB(255, 255, 248, 240);
     wchar_t d[2] = { (wchar_t)(L'0' + id), 0 };
     const wchar_t *s = id < 10 ? d : lab[id - B_ADD5];
-    GdipResetTextureTransform(t);
-    GdipTranslateTextureTransform(t, r.x, r.y, MatrixOrderPrepend);
-    FillRR(g, r, 8, (GpBrush *)t);
+    FillRRc(g, r, 8, fill);
     if (gPress == id) FillRRc(g, r, 8, ARGB(70, 60, 0, 10));
     else if (gHover == id) FillRRc(g, r, 8, ARGB(40, 255, 255, 255));
     if (id >= B_ADD5 && id <= B_ADD30) {   /* big number + small unit */
@@ -295,13 +278,32 @@ static void DrawKey(GpGraphics *g, int id)
         Text(g, s, r, id < 10 ? 20 : 15, ink, 0);
 }
 
+/* only the case has some depth: a soft vertical shade and a bevelled rim */
+static void DrawCase(GpGraphics *g)
+{
+    static const REAL pos[3] = { 0, 0.5f, 1 };
+    const ARGB rim[3] = { ARGB(120, 255, 255, 255), ARGB(0, 255, 255, 255), ARGB(110, 40, 0, 8) };
+    GpRectF rf = { 0, -1, W_LOG, H_LOG + 2 };
+    GpLineGradient *b;
+    GpPen *pen;
+    GpPath *p = RRect((RF){ 1.5f, 1.5f, W_LOG - 3, H_LOG - 3 }, 16.5f);
+    GdipCreateLineBrushFromRect(&rf, ARGB(255, 200, 28, 48), ARGB(255, 164, 14, 34), LinearGradientModeVertical, WrapModeTileFlipXY, &b);
+    FillRR(g, (RF){ 0, 0, W_LOG, H_LOG }, 18, (GpBrush *)b);
+    GdipSetLinePresetBlend(b, rim, pos, 3);
+    GdipCreatePen2((GpBrush *)b, 3, UnitWorld, &pen);
+    GdipDrawPath(g, pen, p);
+    GdipDeletePen(pen);
+    GdipDeletePath(p);
+    GdipDeleteBrush((GpBrush *)b);
+}
+
 static void DrawAll(GpGraphics *g, long long now)
 {
     int i;
     GdipSetSmoothingMode(g, SmoothingModeAntiAlias);
     GdipSetPixelOffsetMode(g, PixelOffsetModeHalf);
     GdipSetTextRenderingHint(g, TextRenderingHintAntiAlias);
-    FillRRc(g, (RF){ 0, 0, W_LOG, H_LOG }, 18, ARGB(255, 184, 20, 40));   /* flat red body */
+    DrawCase(g);
     Text(g, L"KEYPAD TIMER", (RF){ 14, 6, 110, 20 }, 10.5f, ARGB(220, 255, 228, 222), 0);
     DrawLcd(g, now);
     for (i = 0; i < B_COUNT; i++) {
@@ -498,7 +500,8 @@ static int Shot(const wchar_t *file, const wchar_t *what)
     void *bits;
     HBITMAP hb;
     GpBitmap *bm;
-    if (!wcscmp(what, L"unpinned")) gTop = 0;
+    if (!wcscmp(what, L"pinned")) gTop = 1;
+    if (!wcscmp(what, L"stopwatch")) { tl_startstop(&gT, t0); t0 += 83400; }   /* 0:01:23 */
     if (!wcscmp(what, L"entered") || !wcscmp(what, L"bs")) for (i = 0; i < 3; i++) tl_digit(&gT, L"130"[i] - L'0', 0);
     if (!wcscmp(what, L"bs")) { tl_backspace(&gT, 0); gPress = B_BS; }
     if (!wcscmp(what, L"running") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm")) {
@@ -542,7 +545,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE hp, PWSTR cmd, int show)
     wc.lpszClassName = L"zmlworks.KeypadTimer";
     RegisterClassExW(&wc);
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
-    gWnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_APPWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+    gWnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_APPWINDOW | WS_EX_NOACTIVATE,
                            wc.lpszClassName, APPNAME, WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX,
                            0, 0, W_LOG, H_LOG, NULL, NULL, hi, NULL);
     if (!gWnd) return 1;

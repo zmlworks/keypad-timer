@@ -22,9 +22,11 @@ Windows 用の小さなキッチンタイマーです。市販のタイマーと
 - `スタート / ストップ` で開始します（自動では始まりません）。計測中に押すと一時停止、もう一度押すと再開します。アラーム中に押すと止まります。
 - `リセット` を押すと、直前に計測していた時間に戻ります。もう一度押すと 0 になります。
 - アラームを止めたあとも、直前の時間に戻ります。そのまま `スタート / ストップ` を1回押せば同じ時間をもう一度計れます。
+- 0:00:00 のときに `スタート / ストップ` を押すと **ストップウォッチ** になります（最大 99:59:59、アラームなし）。もう一度押すと一時停止・再開、`リセット` で 0:00:00 に戻ります。動いている間は数字・加算・BS は効きません。
+- 計測中はコロンが1秒周期で点滅します（止まっているときは点灯のまま）。
 - 前の時間が表示されているときに数字を押すと、続きではなく新しく入力し直します。
 - 誤操作を防ぐため、**キーボードでは一切操作できません**（マウス／タッチのみ）。タイマーのウィンドウはクリックしても入力フォーカスを奪いません。
-- 常に手前に表示されます。右上のピンのボタンで切り替えられます。ウィンドウは何もないところをドラッグして動かせます。
+- 右上のピンのボタンで「常に手前に表示」を切り替えられます（起動時はオフ）。ウィンドウは何もないところをドラッグして動かせます。
 
 ## 音
 
@@ -32,7 +34,7 @@ Windows 用の小さなキッチンタイマーです。市販のタイマーと
 - 30 秒かけて徐々に大きくなり、鳴り始めてから 2 分で自動停止します（設定はありません）。
 - ボタン操作音はアラームの最大音量と同じ大きさで鳴ります。PC が消音になっていることに気付けるようにするためです。
 - Windows 本体の音量やミュートは変えません。
-- 設定ファイルは作りません。起動するたびに「常に手前に表示」はオンで始まります。
+- 設定ファイルは作りません。起動するたびに「常に手前に表示」はオフで始まります。
 
 ## ダウンロード
 
@@ -57,7 +59,9 @@ A tiny always-on-top countdown timer for Windows, modeled on commercial kitchen 
 
 - Digits are entered as **minutes**: the last two digits are minutes, anything above is hours (`5` = 5 min, `30` = 30 min, `130` = 1 h 30 min, `90` = 1 h 30 min).
 - `5分` / `1分` / `30秒` add to the displayed time, or to the remaining time while running. `BS` deletes the last digit (`130` → `13` → `1` → 0) when not running.
-- The pin button toggles always-on-top (on at every launch).
+- The pin button toggles always-on-top (off at every launch).
+- With 0:00:00 shown, `スタート / ストップ` starts a **stopwatch** (counts up to 99:59:59, no alarm); the same button pauses/resumes and `リセット` returns to 0:00:00.
+- The colons blink once per second while running and stay lit when stopped.
 - `スタート / ストップ` starts (no auto-start); while running the same button pauses and resumes, and it stops the alarm.
 - `リセット` returns to the time that was just measured; press it again for 0. After the alarm stops, the timer also returns to that time, so one press of `スタート / ストップ` runs it again.
 - No keyboard operation at all, by design (prevents accidental input). The window never takes keyboard focus.
