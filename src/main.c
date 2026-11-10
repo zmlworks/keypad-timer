@@ -25,7 +25,7 @@ static RF gBtn[B_COUNT];
 
 static void Layout(void)
 {
-    const float m = 12, gap = 3, cw = (W_LOG - 2 * m - 2 * gap) / 3, rh = 42, y = 181;   /* keys almost touch */
+    const float m = 12, gap = 0, cw = (W_LOG - 2 * m - 2 * gap) / 3, rh = 46, y = 178;   /* keys touch */
     int i;
     for (i = 0; i < 3; i++) gBtn[B_ADD5 + i] = (RF){ m + i * (cw + gap), 146, cw, 32 };
     for (i = 1; i <= 9; i++)                     /* 7 8 9 / 4 5 6 / 1 2 3 */
@@ -34,7 +34,7 @@ static void Layout(void)
     gBtn[0]       = (RF){ m + cw + gap, y + 3 * (rh + gap), cw, rh };
     gBtn[B_RESET] = (RF){ m + 2 * (cw + gap), y + 3 * (rh + gap), cw, rh };
     gBtn[B_START] = (RF){ m, y + 4 * (rh + gap), W_LOG - 2 * m, 44 };
-    gBtn[B_PIN]   = (RF){ W_LOG - 56, 6, 20, 20 };
+    gBtn[B_PIN]   = (RF){ W_LOG - 61, 6, 20, 20 };
     gBtn[B_CLOSE] = (RF){ W_LOG - 32, 6, 20, 20 };
     gBtn[B_LCD]   = (RF){ 12, 32, W_LOG - 24, 104 };   /* double-click: compact mode */
 }
@@ -211,7 +211,7 @@ static void Digit(GpGraphics *g, GpBrush *on, GpBrush *off, int d, float x, floa
 static void DrawLcd(GpGraphics *g, long long now)
 {
     static const wchar_t *cap[3] = { L"H", L"M", L"S" };
-    const float dw = 25.5f, dh = 64, th = 7.5f, gap = 3.6f, colw = 9, y = 44;
+    const float dw = 25.5f, dh = 64, th = 7.5f, gap = 3.6f, colw = 9, y = 48;
     int s = tl_display(&gT, now), dig[6], i, lit = !(gT.st == TL_ALARM && !gBlinkOn), colon = lit && tl_colon_on(&gT, now);
     float x = 22, cs = 6.8f;
     GpSolidFill *on, *off;
@@ -284,16 +284,13 @@ static void DrawKey(GpGraphics *g, int id)
     int cream = id == 2 || id == 4 || id == 6 || id == 8;
     ARGB fill = id >= B_ADD5 && id <= B_RESET ? ARGB(255, 140, 12, 30) : cream ? ARGB(255, 246, 212, 120)
               : id == 5 ? ARGB(255, 204, 34, 52) : ARGB(255, 226, 52, 66);
-    ARGB ink = cream ? ARGB(255, 150, 14, 32) : ARGB(255, 255, 248, 240);
+    ARGB ink = cream ? ARGB(255, 186, 52, 62) : ARGB(255, 255, 248, 240);
     wchar_t d[2] = { (wchar_t)(L'0' + id), 0 };
     const wchar_t *s = id < 10 ? d : lab[id - B_ADD5];
-    if (gPress == id) {   /* pushed in: sunk 1.5 px, darker face, no shadow */
-        r.y += 1.5f;
-        FillRim(g, r, 8, Mix(fill, 0, 0.12f), Mix(fill, 0, 0.40f), 3);
-    } else {              /* raised: flat top, rounded edge, soft shadow below */
-        FillRRc(g, (RF){ r.x, r.y + 2, r.w, r.h }, 8, ARGB(70, 70, 0, 12));
-        FillRim(g, r, 8, gHover == id ? Mix(fill, 0xFFFFFFFF, 0.12f) : fill, Mix(fill, 0, 0.35f), 3);
-    }
+    if (gPress == id)        /* pushed in: darker face and edge */
+        FillRim(g, r, 8, Mix(fill, 0, cream ? 0.18f : 0.12f), Mix(fill, 0, 0.45f), 3);
+    else                     /* flat top, narrow rounded edge; hover lightens (more on gold keys) */
+        FillRim(g, r, 8, gHover == id ? Mix(fill, 0xFFFFFFFF, cream ? 0.45f : 0.12f) : fill, Mix(fill, 0, 0.35f), 3);
     if (id >= B_ADD5 && id <= B_ADD30) {   /* big number + small unit */
         const wchar_t *unit = id == B_ADD30 ? L"秒" : L"分";
         float wn = Text(g, s, r, 19, 0, 1), wu = Text(g, unit, r, 10.5f, 0, 1), x0 = r.x + (r.w - wn - wu - 1.5f) / 2;
@@ -526,6 +523,8 @@ static int Shot(const wchar_t *file, const wchar_t *what)
     if (!wcscmp(what, L"entered") || !wcscmp(what, L"bs")) for (i = 0; i < 3; i++) tl_digit(&gT, L"130"[i] - L'0', 0);
     if (!wcscmp(what, L"bs")) { tl_backspace(&gT, 0); gPress = B_BS; }
     if (!wcscmp(what, L"entered")) gHover = 7;
+    if (!wcscmp(what, L"icon")) for (i = 0; i < 2; i++) tl_digit(&gT, L"30"[i] - L'0', 0);   /* 0:30:00 */
+    if (!wcscmp(what, L"hover")) gHover = 8;
     if (!wcscmp(what, L"compact")) gH = H_COMPACT;
     if (!wcscmp(what, L"running") || !wcscmp(what, L"compact") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm")) {
         tl_digit(&gT, 2, 0); tl_digit(&gT, 5, 0);
