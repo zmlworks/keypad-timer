@@ -133,20 +133,23 @@ static void FillRRc(GpGraphics *g, RF r, float rad, ARGB c)
     FillRR(g, r, rad, (GpBrush *)b);
     GdipDeleteBrush((GpBrush *)b);
 }
-static void FillGrad(GpGraphics *g, RF r, float rad, ARGB top, ARGB bottom)
-{
-    GpRectF rf = { r.x, r.y - 0.5f, r.w, r.h + 1 };
-    GpLineGradient *b;
-    GdipCreateLineBrushFromRect(&rf, top, bottom, LinearGradientModeVertical, WrapModeTileFlipXY, &b);
-    FillRR(g, r, rad, (GpBrush *)b);
-    GdipDeleteBrush((GpBrush *)b);
-}
 static ARGB Mix(ARGB a, ARGB b, float t)   /* blend colours, keep a's alpha */
 {
     ARGB r = a & 0xFF000000;
     int i;
     for (i = 0; i < 24; i += 8) r |= (ARGB)lrintf(((a >> i) & 255) + ((int)((b >> i) & 255) - (int)((a >> i) & 255)) * t) << i;
     return r;
+}
+/* flat face with a narrow rounded edge: inset fills shade from `edge` to `face` within `band` px (no lines) */
+static void FillRim(GpGraphics *g, RF r, float rad, ARGB face, ARGB edge, float band)
+{
+    const int n = 8;
+    int i;
+    for (i = 0; i <= n; i++) {
+        float t = (float)i / n, k = band * t;
+        FillRRc(g, (RF){ r.x + k, r.y + k, r.w - 2 * k, r.h - 2 * k }, rad - k > 1 ? rad - k : 1,
+                Mix(edge, face, 1 - (1 - t) * (1 - t)));   /* steep at the edge, rounding into the face */
+    }
 }
 static float Text(GpGraphics *g, const wchar_t *s, RF r, float size, ARGB c, int measure)
 {
@@ -284,12 +287,12 @@ static void DrawKey(GpGraphics *g, int id)
     ARGB ink = cream ? ARGB(255, 150, 14, 32) : ARGB(255, 255, 248, 240);
     wchar_t d[2] = { (wchar_t)(L'0' + id), 0 };
     const wchar_t *s = id < 10 ? d : lab[id - B_ADD5];
-    if (gPress == id) {   /* pushed in: sunk 1.5 px, shading reversed, no shadow */
+    if (gPress == id) {   /* pushed in: sunk 1.5 px, darker face, no shadow */
         r.y += 1.5f;
-        FillGrad(g, r, 8, Mix(fill, 0, 0.12f), Mix(fill, 0xFFFFFFFF, 0.06f));
-    } else {              /* raised: soft shadow below, light from above */
+        FillRim(g, r, 8, Mix(fill, 0, 0.12f), Mix(fill, 0, 0.40f), 3);
+    } else {              /* raised: flat top, rounded edge, soft shadow below */
         FillRRc(g, (RF){ r.x, r.y + 2, r.w, r.h }, 8, ARGB(70, 70, 0, 12));
-        FillGrad(g, r, 8, Mix(fill, 0xFFFFFFFF, gHover == id ? 0.30f : 0.20f), Mix(fill, 0, 0.10f));
+        FillRim(g, r, 8, gHover == id ? Mix(fill, 0xFFFFFFFF, 0.12f) : fill, Mix(fill, 0, 0.35f), 3);
     }
     if (id >= B_ADD5 && id <= B_ADD30) {   /* big number + small unit */
         const wchar_t *unit = id == B_ADD30 ? L"秒" : L"分";
@@ -300,21 +303,10 @@ static void DrawKey(GpGraphics *g, int id)
         Text(g, s, r, id < 10 ? 20 : 15, ink, 0);
 }
 
-/* molded-plastic case: lighter in the middle, rounding off darker toward the edges (no lines) */
+/* case: flat red with a narrow rounded edge (no lines) */
 static void DrawCase(GpGraphics *g)
 {
-    ARGB edge = ARGB(255, 150, 8, 28);
-    int n = 1;
-    GpPath *p = RRect((RF){ 0, 0, W_LOG, gH }, 18);
-    GpPathGradient *b;
-    GdipCreatePathGradientFromPath(p, &b);
-    GdipSetPathGradientCenterColor(b, ARGB(255, 206, 32, 52));
-    GdipSetPathGradientSurroundColorsWithCount(b, &edge, &n);
-    GdipSetPathGradientFocusScales(b, 1 - 36.0f / W_LOG, 1 - 36.0f / gH);
-    GdipFillPath(g, (GpBrush *)b, p);
-    GdipDeleteBrush((GpBrush *)b);
-    GdipDeletePath(p);
-    FillGrad(g, (RF){ 0, 0, W_LOG, 60 }, 18, ARGB(60, 255, 255, 255), ARGB(0, 255, 255, 255));  /* top light */
+    FillRim(g, (RF){ 0, 0, W_LOG, gH }, 18, ARGB(255, 190, 22, 42), ARGB(255, 110, 4, 20), 4.5f);
 }
 
 static void DrawAll(GpGraphics *g, long long now)
@@ -572,11 +564,12 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE hp, PWSTR cmd, int show)
     wc.lpfnWndProc = WndProc;
     wc.hInstance = hi;
     wc.hIcon = LoadIconW(hi, MAKEINTRESOURCEW(1));
+    wc.hIconSm = (HICON)LoadImageW(hi, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
     wc.hCursor = LoadCursorW(NULL, (LPCWSTR)IDC_ARROW);
     wc.lpszClassName = L"zmlworks.KeypadTimer";
     RegisterClassExW(&wc);
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
-    gWnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_APPWINDOW | WS_EX_NOACTIVATE,
+    gWnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_APPWINDOW,   /* activates normally; keys are dropped in the loop */
                            wc.lpszClassName, APPNAME, WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX,
                            0, 0, W_LOG, H_LOG, NULL, NULL, hi, NULL);
     if (!gWnd) return 1;
@@ -584,7 +577,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE hp, PWSTR cmd, int show)
     SetWindowPos(gWnd, NULL, wa.right - (int)ceilf(W_LOG * gScale) - 24, wa.top + 24,
                  (int)ceilf(W_LOG * gScale), (int)ceilf(H_LOG * gScale), SWP_NOZORDER | SWP_NOACTIVATE);
     Render();
-    ShowWindow(gWnd, show == SW_SHOWMINIMIZED || show == SW_MINIMIZE ? show : SW_SHOWNOACTIVATE);
+    ShowWindow(gWnd, show);
     while (GetMessageW(&m, NULL, 0, 0) > 0) {
         if (m.message >= WM_KEYFIRST && m.message <= WM_KEYLAST && m.hwnd == gWnd) continue;  /* no keyboard */
         TranslateMessage(&m);
