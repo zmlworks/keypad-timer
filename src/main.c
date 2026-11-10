@@ -14,8 +14,8 @@
 
 #define APPNAME L"キーパッドタイマー"
 #define W_LOG 240   /* logical size @96 dpi */
-#define H_LOG 420
-#define H_COMPACT 138   /* compact mode: title bar + display only */
+#define H_LOG 418
+#define H_COMPACT 148   /* compact mode: title bar + display only */
 #define ARGB(a, r, g, b) ((ARGB)(((DWORD)(a) << 24) | ((DWORD)(r) << 16) | ((DWORD)(g) << 8) | (DWORD)(b)))
 
 /* ---------- buttons ---------- */
@@ -25,9 +25,9 @@ static RF gBtn[B_COUNT];
 
 static void Layout(void)
 {
-    const float m = 12, gap = 8, cw = (W_LOG - 2 * m - 2 * gap) / 3, rh = 38, y = 180;
+    const float m = 12, gap = 3, cw = (W_LOG - 2 * m - 2 * gap) / 3, rh = 42, y = 181;   /* keys almost touch */
     int i;
-    for (i = 0; i < 3; i++) gBtn[B_ADD5 + i] = (RF){ m + i * (cw + gap), 136, cw, 32 };
+    for (i = 0; i < 3; i++) gBtn[B_ADD5 + i] = (RF){ m + i * (cw + gap), 146, cw, 32 };
     for (i = 1; i <= 9; i++)                     /* 7 8 9 / 4 5 6 / 1 2 3 */
         gBtn[i] = (RF){ m + (i - 1) % 3 * (cw + gap), y + (2 - (i - 1) / 3) * (rh + gap), cw, rh };
     gBtn[B_BS]    = (RF){ m, y + 3 * (rh + gap), cw, rh };   /* BS | 0 | リセット */
@@ -36,7 +36,7 @@ static void Layout(void)
     gBtn[B_START] = (RF){ m, y + 4 * (rh + gap), W_LOG - 2 * m, 44 };
     gBtn[B_PIN]   = (RF){ W_LOG - 56, 6, 20, 20 };
     gBtn[B_CLOSE] = (RF){ W_LOG - 32, 6, 20, 20 };
-    gBtn[B_LCD]   = (RF){ 12, 32, W_LOG - 24, 94 };   /* double-click: compact mode */
+    gBtn[B_LCD]   = (RF){ 12, 32, W_LOG - 24, 104 };   /* double-click: compact mode */
 }
 
 /* ---------- state ---------- */
@@ -211,19 +211,19 @@ static void Digit(GpGraphics *g, GpBrush *on, GpBrush *off, int d, float x, floa
 static void DrawLcd(GpGraphics *g, long long now)
 {
     static const wchar_t *cap[3] = { L"H", L"M", L"S" };
-    const float dw = 24.5f, dh = 52, th = 7, gap = 4.4f, colw = 10.5f, y = 45;
+    const float dw = 25.5f, dh = 64, th = 7.5f, gap = 3.6f, colw = 9, y = 44;
     int s = tl_display(&gT, now), dig[6], i, lit = !(gT.st == TL_ALARM && !gBlinkOn), colon = lit && tl_colon_on(&gT, now);
-    float x = 21, cs = 6.2f;
+    float x = 22, cs = 6.8f;
     GpSolidFill *on, *off;
-    FillRRc(g, (RF){ 12, 32, W_LOG - 24, 94 }, 10, ARGB(255, 34, 30, 32));     /* bezel */
-    FillRRc(g, (RF){ 18, 38, W_LOG - 36, 82 }, 6, ARGB(255, 176, 188, 156));   /* panel */
+    FillRRc(g, (RF){ 12, 32, W_LOG - 24, 104 }, 10, ARGB(255, 34, 30, 32));     /* bezel */
+    FillRRc(g, (RF){ 18, 38, W_LOG - 36, 92 }, 6, ARGB(255, 176, 188, 156));   /* panel */
     GdipCreateSolidFill(ARGB(255, 24, 28, 22), &on);
     GdipCreateSolidFill(ARGB(46, 30, 40, 24), &off);
     dig[0] = s / 36000 ? s / 36000 : -1; dig[1] = s / 3600 % 10;   /* H H : M M : S S */
     dig[2] = s / 600 % 6; dig[3] = s / 60 % 10;
     dig[4] = s % 60 / 10; dig[5] = s % 10;
-    for (i = 0; i < 3; i++)   /* H / M / S under each digit pair */
-        Text(g, cap[i], (RF){ x + i * (2 * (dw + gap) + colw), y + dh, 2 * dw + gap, 14 }, 8, ARGB(150, 40, 50, 34), 0);
+    for (i = 0; i < 3; i++)   /* H / M / S along the bottom of the panel */
+        Text(g, cap[i], (RF){ x + i * (2 * (dw + gap) + colw), 116, 2 * dw + gap, 14 }, 8, ARGB(150, 40, 50, 34), 0);
     for (i = 0; i < 6; i++) {
         Digit(g, (GpBrush *)on, (GpBrush *)off, lit ? dig[i] : -1, x, y, dw, dh, th);
         x += dw + gap;
@@ -282,7 +282,7 @@ static void DrawKey(GpGraphics *g, int id)
     static const wchar_t *lab[] = { L"5", L"1", L"30", L"BS", L"リセット", L"スタート / ストップ" };
     RF r = gBtn[id];
     int cream = id == 2 || id == 4 || id == 6 || id == 8;
-    ARGB fill = id >= B_ADD5 && id <= B_RESET ? ARGB(255, 140, 12, 30) : cream ? ARGB(255, 251, 238, 200)
+    ARGB fill = id >= B_ADD5 && id <= B_RESET ? ARGB(255, 140, 12, 30) : cream ? ARGB(255, 246, 212, 120)
               : id == 5 ? ARGB(255, 204, 34, 52) : ARGB(255, 226, 52, 66);
     ARGB ink = cream ? ARGB(255, 150, 14, 32) : ARGB(255, 255, 248, 240);
     wchar_t d[2] = { (wchar_t)(L'0' + id), 0 };
