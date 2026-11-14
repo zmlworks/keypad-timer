@@ -31,10 +31,17 @@ int  tl_backspace(Timer *t, long long now); /* delete the last digit (idle only)
 int  tl_stop_alarm(Timer *t);
 /* Returns 1 when a running timer has just reached 0 (enters ALARM). */
 int  tl_tick(Timer *t, long long now);
-/* RUN: 1 while the colon is lit (first half of each second); otherwise always 1 */
+/* RUN: 1 while the colon is lit (first half of each second); otherwise always 1.
+   ALARM: lit while ringing; after the ring, blinks like a stopwatch. */
 int  tl_colon_on(const Timer *t, long long now);
-/* ms until the shown second or the colon changes (RUN only), else -1 */
+/* ms until the shown second or the colon changes (RUN or ALARM), else -1 */
 long long tl_next_change_ms(const Timer *t, long long now);
+/* 1 while ALARM and the synthesized ring is still playing (first TL_RING_SEC). */
+int  tl_ringing(const Timer *t, long long now);
+/* First significant digit in HH:MM:SS (0 = tens of hours .. 5 = ones of seconds; 6 = none). */
+int  tl_sig_from(int sec);
+/* Accent for significant digits: 0 = none, 1 = timer (red), 2 = stopwatch / overtime (blue). */
+int  tl_accent(const Timer *t, long long now);
 /* Alarm gain 0..1 at t seconds after the alarm started (fade-in). */
 double tl_alarm_gain(double t, double fade_sec);
 

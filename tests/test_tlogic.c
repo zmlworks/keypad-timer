@@ -29,7 +29,15 @@ int main(void)
     EQ(tl_colon_on(&t, 1000), 1); EQ(tl_colon_on(&t, 1499), 1); EQ(tl_colon_on(&t, 1500), 0); EQ(tl_colon_on(&t, 2000), 1);
     EQ(tl_tick(&t, 180999), 0); EQ(tl_display(&t, 180999), 1);
     EQ(tl_tick(&t, 181000), 1); EQ(t.st, TL_ALARM); EQ(tl_display(&t, 181000), 0);
-    EQ(tl_startstop(&t, 182000), 1); EQ(t.st, TL_IDLE); EQ(t.disp, 180);
+    EQ(tl_ringing(&t, 181000), 1); EQ(tl_accent(&t, 181000), 0);          /* 0:00:00, no accent yet */
+    EQ(tl_display(&t, 181999), 0); EQ(tl_display(&t, 182000), 1); EQ(tl_accent(&t, 182000), 2);
+    EQ(tl_colon_on(&t, 181000), 1); EQ(tl_colon_on(&t, 240999), 1);       /* solid colon while ringing */
+    EQ(tl_ringing(&t, 181000 + 120000 - 1), 1); EQ(tl_ringing(&t, 181000 + 120000), 0);
+    EQ(tl_display(&t, 181000 + 120000), 120);                            /* still counting after the ring */
+    EQ(tl_display(&t, 181000 + 185000), 185);                            /* and past 3 min, like a stopwatch */
+    EQ(tl_colon_on(&t, 181000 + 120000), 1); EQ(tl_colon_on(&t, 181000 + 120500), 0);
+    EQ(tl_next_change_ms(&t, 181000 + 120200), 300);
+    EQ(tl_startstop(&t, 181000 + 185000), 1); EQ(t.st, TL_IDLE); EQ(t.disp, 180); /* stop restores the duration */
     /* one press restarts the same time */
     EQ(tl_startstop(&t, 200000), 1); EQ(t.st, TL_RUN); EQ(tl_display(&t, 200000), 180);
     /* reset while running -> remembered, again -> 0, again -> remembered */
@@ -69,6 +77,7 @@ int main(void)
     tl_add(&t, 60, 100000); EQ(tl_display(&t, 100000), 390 - 100 + 60);
     EQ(t.remembered, 390);                                /* remembered = the started time */
     tl_startstop(&t, 100000); tl_add(&t, 30, 0); EQ(tl_display(&t, 0), 380);
+    tl_init(&t, 0); tl_add(&t, 60, 0); tl_add(&t, 30, 0); tl_add(&t, 10, 0); EQ(t.disp, 100);
     tl_init(&t, 0); keys(&t, "9959"); tl_add(&t, 300, 0); EQ(t.disp, TL_MAX_SEC);
     /* any button during alarm only stops it */
     tl_init(&t, 0); keys(&t, "1"); tl_startstop(&t, 0); tl_tick(&t, 60000);
@@ -91,6 +100,19 @@ int main(void)
     tl_startstop(&t, 2000); EQ(tl_backspace(&t, 0), 0); EQ(t.st, TL_PAUSE);
     tl_startstop(&t, 2000); tl_tick(&t, 70000); EQ(t.st, TL_ALARM);
     tl_backspace(&t, 0); EQ(t.st, TL_IDLE); EQ(t.disp, 60); /* stops the alarm only */
+    /* significant digits: 5 min is 0:05:00, only "5:00" is significant (index 3..) */
+    EQ(tl_sig_from(0), 6);
+    EQ(tl_sig_from(5), 5); EQ(tl_sig_from(10), 4); EQ(tl_sig_from(60), 3);
+    EQ(tl_sig_from(300), 3); EQ(tl_sig_from(600), 2);
+    EQ(tl_sig_from(3600), 1); EQ(tl_sig_from(36000), 0);
+    tl_init(&t, 0); EQ(tl_accent(&t, 0), 0);
+    keys(&t, "5"); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1); EQ(tl_sig_from(t.disp), 3);
+    tl_startstop(&t, 0); EQ(tl_accent(&t, 0), 1);            /* countdown stays red */
+    tl_tick(&t, 300000); EQ(t.st, TL_ALARM);
+    EQ(tl_accent(&t, 300000), 0); EQ(tl_accent(&t, 305000), 2);
+    tl_reset(&t, 305000); EQ(t.st, TL_IDLE); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1);
+    tl_init(&t, 0); tl_startstop(&t, 0); EQ(t.sw, 1);
+    EQ(tl_accent(&t, 0), 0); EQ(tl_accent(&t, 2000), 2);     /* stopwatch is blue once past 0 */
     /* fade curve */
     n++; if (fabs(tl_alarm_gain(0, 30) - pow(10, -TL_FADE_DB / 20)) > 1e-9) { fails++; puts("FAIL gain0"); }
     n++; if (fabs(tl_alarm_gain(30, 30) - 1) > 1e-9 || fabs(tl_alarm_gain(500, 30) - 1) > 1e-9) { fails++; puts("FAIL gainmax"); }

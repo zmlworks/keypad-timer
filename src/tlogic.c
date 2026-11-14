@@ -21,10 +21,14 @@ int tl_entry_to_sec(int entry)
     return clampsec((long long)h * 3600 + (long long)m * 60);
 }
 
-/* RUN/PAUSE counter in ms: timer = ms left, stopwatch = ms elapsed (capped) */
+/* Counter in ms: timer = ms left, stopwatch / overtime = ms elapsed (capped) */
 static long long value_ms(const Timer *t, long long now)
 {
-    long long v = t->st == TL_PAUSE ? t->rem_ms : t->sw ? now - t->end_ms : t->end_ms - now;
+    long long v;
+    if (t->st == TL_ALARM) v = now - t->alarm_ms;
+    else if (t->st == TL_PAUSE) v = t->rem_ms;
+    else if (t->sw) v = now - t->end_ms;
+    else v = t->end_ms - now;
     return v < 0 ? 0 : v > TL_MAX_SEC * 1000LL ? TL_MAX_SEC * 1000LL : v;
 }
 
@@ -34,9 +38,32 @@ int tl_display(const Timer *t, long long now)
     switch (t->st) {
     case TL_RUN:
     case TL_PAUSE: return (int)(t->sw ? v / 1000 : (v + 999) / 1000);
-    case TL_ALARM: return 0;
+    case TL_ALARM: return (int)(v / 1000);   /* elapsed since the timer reached 0 */
     default:       return t->disp;
     }
+}
+
+int tl_ringing(const Timer *t, long long now)
+{
+    return t->st == TL_ALARM && now - t->alarm_ms < TL_RING_SEC * 1000LL;
+}
+
+int tl_sig_from(int sec)
+{
+    int s = clampsec(sec), d[6], i;
+    if (s <= 0) return 6;
+    d[0] = s / 36000; d[1] = s / 3600 % 10;
+    d[2] = s / 600 % 6; d[3] = s / 60 % 10;
+    d[4] = s % 60 / 10; d[5] = s % 10;
+    for (i = 0; i < 6; i++) if (d[i] > 0) return i;
+    return 6;
+}
+
+int tl_accent(const Timer *t, long long now)
+{
+    if (tl_display(t, now) <= 0) return 0;
+    if (t->st == TL_ALARM || t->sw) return 2;   /* blue: stopwatch or overtime */
+    return 1;                                   /* red: a timer is set or counting down */
 }
 
 int tl_stop_alarm(Timer *t)
@@ -155,6 +182,10 @@ int tl_tick(Timer *t, long long now)
 int tl_colon_on(const Timer *t, long long now)
 {
     long long v = value_ms(t, now);
+    if (t->st == TL_ALARM) {
+        if (tl_ringing(t, now)) return 1;          /* solid while the whole display blinks */
+        return v % 1000 < 500;                     /* then blink like a stopwatch */
+    }
     if (t->st != TL_RUN || (t->sw && v >= TL_MAX_SEC * 1000LL)) return 1;
     return t->sw ? v % 1000 < 500 : (v + 999) % 1000 >= 500;
 }
@@ -162,6 +193,10 @@ int tl_colon_on(const Timer *t, long long now)
 long long tl_next_change_ms(const Timer *t, long long now)
 {
     long long v = value_ms(t, now);
+    if (t->st == TL_ALARM) {
+        if (v >= TL_MAX_SEC * 1000LL) return -1;
+        return 500 - v % 500;
+    }
     if (t->st != TL_RUN || (t->sw && v >= TL_MAX_SEC * 1000LL)) return -1;
     if (t->sw) return 500 - v % 500;
     return v <= 0 ? 0 : (v - 1) % 500 + 1;

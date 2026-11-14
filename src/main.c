@@ -19,7 +19,7 @@
 #define ARGB(a, r, g, b) ((ARGB)(((DWORD)(a) << 24) | ((DWORD)(r) << 16) | ((DWORD)(g) << 8) | (DWORD)(b)))
 
 /* ---------- buttons ---------- */
-enum { B_ADD5 = 10, B_ADD1, B_ADD30, B_BS, B_RESET, B_START, B_PIN, B_CLOSE, B_LCD, B_COUNT }; /* 0..9 = digits */
+enum { B_ADD1 = 10, B_ADD30, B_ADD10, B_BS, B_RESET, B_START, B_PIN, B_CLOSE, B_LCD, B_COUNT }; /* 0..9 = digits */
 typedef struct { float x, y, w, h; } RF;
 static RF gBtn[B_COUNT];
 
@@ -27,7 +27,7 @@ static void Layout(void)
 {
     const float m = 12, gap = 0, cw = (W_LOG - 2 * m - 2 * gap) / 3, rh = 46, y = 178;   /* keys touch */
     int i;
-    for (i = 0; i < 3; i++) gBtn[B_ADD5 + i] = (RF){ m + i * (cw + gap), 146, cw, 32 };
+    for (i = 0; i < 3; i++) gBtn[B_ADD1 + i] = (RF){ m + i * (cw + gap), 146, cw, 32 };
     for (i = 1; i <= 9; i++)                     /* 7 8 9 / 4 5 6 / 1 2 3 */
         gBtn[i] = (RF){ m + (i - 1) % 3 * (cw + gap), y + (2 - (i - 1) / 3) * (rh + gap), cw, rh };
     gBtn[B_BS]    = (RF){ m, y + 3 * (rh + gap), cw, rh };   /* BS | 0 | リセット */
@@ -36,14 +36,13 @@ static void Layout(void)
     gBtn[B_START] = (RF){ m, y + 4 * (rh + gap), W_LOG - 2 * m, 44 };
     gBtn[B_PIN]   = (RF){ W_LOG - 61, 6, 20, 20 };
     gBtn[B_CLOSE] = (RF){ W_LOG - 32, 6, 20, 20 };
-    gBtn[B_LCD]   = (RF){ 12, 32, W_LOG - 24, 104 };   /* double-click: compact mode */
+    gBtn[B_LCD]   = (RF){ 12, 32, W_LOG - 24, 104 };   /* click: compact mode */
 }
 
 /* ---------- state ---------- */
 static HWND gWnd;
 static Timer gT;
 static float gScale = 1, gH = H_LOG;   /* gH: current logical height */
-static long long gLastLcd;
 static int gHover = -1, gPress = -1, gTop = 0, gBlinkOn = 1, gRinging;
 static GpFontFamily *gFam;
 enum { TM_TICK = 1, TM_ALARM, TM_CLICKCLOSE };
@@ -208,35 +207,46 @@ static void Digit(GpGraphics *g, GpBrush *on, GpBrush *off, int d, float x, floa
     Seg(g, s & 0x20 ? on : off, 0, l + k, m - k, l, t, x, y, h);        /* f */
     Seg(g, s & 0x40 ? on : off, 1, l + k, r - k, m, t, x, y, h);        /* g */
 }
+/* LCD inks on the olive panel (176,188,156): dark green-black for leading zeros;
+   muted slightly-orange red and ink blue for significant digits — absorbent, not LED-bright. */
+#define LCD_INK  ARGB(255, 24, 28, 22)     /* #181C16 */
+#define LCD_RED  ARGB(255, 176, 60, 34)    /* #B03C22 slightly orange muted LCD red */
+#define LCD_BLUE ARGB(255, 30, 60, 136)    /* #1E3C88 muted LCD ink blue */
+#define LCD_OFF  ARGB(34, 30, 40, 24)      /* unlit segments, slightly fainter than before */
+#define LCD_CAP  ARGB(185, 40, 50, 34)     /* H/M/S, slightly darker than before */
 static void DrawLcd(GpGraphics *g, long long now)
 {
     static const wchar_t *cap[3] = { L"H", L"M", L"S" };
+    static const ARGB inkc[3] = { LCD_INK, LCD_RED, LCD_BLUE };
     const float dw = 25.5f, dh = 64, th = 7.5f, gap = 3.6f, colw = 9, y = 48;
-    int s = tl_display(&gT, now), dig[6], i, lit = !(gT.st == TL_ALARM && !gBlinkOn), colon = lit && tl_colon_on(&gT, now);
+    int s = tl_display(&gT, now), dig[6], i, accent = tl_accent(&gT, now), from = tl_sig_from(s);
+    int lit = !(tl_ringing(&gT, now) && !gBlinkOn), colon = lit && tl_colon_on(&gT, now);
     float x = 22, cs = 6.8f;
-    GpSolidFill *on, *off;
+    GpSolidFill *ink[3], *off;
     FillRRc(g, (RF){ 12, 32, W_LOG - 24, 104 }, 10, ARGB(255, 34, 30, 32));     /* bezel */
     FillRRc(g, (RF){ 18, 38, W_LOG - 36, 92 }, 6, ARGB(255, 176, 188, 156));   /* panel */
-    GdipCreateSolidFill(ARGB(255, 24, 28, 22), &on);
-    GdipCreateSolidFill(ARGB(46, 30, 40, 24), &off);
+    for (i = 0; i < 3; i++) GdipCreateSolidFill(inkc[i], &ink[i]);
+    GdipCreateSolidFill(LCD_OFF, &off);
     dig[0] = s / 36000 ? s / 36000 : -1; dig[1] = s / 3600 % 10;   /* H H : M M : S S */
     dig[2] = s / 600 % 6; dig[3] = s / 60 % 10;
     dig[4] = s % 60 / 10; dig[5] = s % 10;
-    for (i = 0; i < 3; i++)   /* H / M / S along the bottom of the panel */
-        Text(g, cap[i], (RF){ x + i * (2 * (dw + gap) + colw), 116, 2 * dw + gap, 14 }, 8, ARGB(150, 40, 50, 34), 0);
+    for (i = 0; i < 3; i++)   /* H / M / S along the bottom of the panel, slightly right */
+        Text(g, cap[i], (RF){ x + 2.5f + i * (2 * (dw + gap) + colw), 116, 2 * dw + gap, 14 }, 8, LCD_CAP, 0);
     for (i = 0; i < 6; i++) {
-        Digit(g, (GpBrush *)on, (GpBrush *)off, lit ? dig[i] : -1, x, y, dw, dh, th);
+        int a = (accent && i >= from) ? accent : 0;
+        Digit(g, (GpBrush *)ink[a], (GpBrush *)off, lit ? dig[i] : -1, x, y, dw, dh, th);
         x += dw + gap;
         if (i == 1 || i == 3) {
             float c = x + colw / 2 - gap / 2 - 0.5f, v;
+            int ca = (accent && from <= i) ? accent : 0;   /* colon red/blue only between significant digits */
             for (v = 0.30f; v < 0.8f; v += 0.40f) {   /* colon: two slanted squares */
                 float q[8] = { c - cs / 2, dh * v - cs / 2, c + cs / 2, dh * v - cs / 2, c + cs / 2, dh * v + cs / 2, c - cs / 2, dh * v + cs / 2 };
-                Poly(g, (GpBrush *)(colon ? on : off), q, 4, 0, y, dh);   /* blinks while running */
+                Poly(g, (GpBrush *)(colon ? ink[ca] : off), q, 4, 0, y, dh);   /* blinks while running */
             }
             x += colw;
         }
     }
-    GdipDeleteBrush((GpBrush *)on);
+    for (i = 0; i < 3; i++) GdipDeleteBrush((GpBrush *)ink[i]);
     GdipDeleteBrush((GpBrush *)off);
 }
 
@@ -279,20 +289,20 @@ static void DrawSysBtn(GpGraphics *g, int id)
 
 static void DrawKey(GpGraphics *g, int id)
 {
-    static const wchar_t *lab[] = { L"5", L"1", L"30", L"BS", L"リセット", L"スタート / ストップ" };
+    static const wchar_t *lab[] = { L"1", L"30", L"10", L"BS", L"リセット", L"スタート / ストップ" };
     RF r = gBtn[id];
     int cream = id == 2 || id == 4 || id == 6 || id == 8;
-    ARGB fill = id >= B_ADD5 && id <= B_RESET ? ARGB(255, 140, 12, 30) : cream ? ARGB(255, 246, 212, 120)
+    ARGB fill = id >= B_ADD1 && id <= B_RESET ? ARGB(255, 140, 12, 30) : cream ? ARGB(255, 246, 212, 120)
               : id == 5 ? ARGB(255, 204, 34, 52) : ARGB(255, 226, 52, 66);
     ARGB ink = cream ? ARGB(255, 186, 52, 62) : ARGB(255, 255, 248, 240);
     wchar_t d[2] = { (wchar_t)(L'0' + id), 0 };
-    const wchar_t *s = id < 10 ? d : lab[id - B_ADD5];
+    const wchar_t *s = id < 10 ? d : lab[id - B_ADD1];
     if (gPress == id)        /* pushed in: darker face and edge */
         FillRim(g, r, 8, Mix(fill, 0, cream ? 0.18f : 0.12f), Mix(fill, 0, 0.45f), 3);
     else                     /* flat top, narrow rounded edge; hover lightens (more on gold keys) */
         FillRim(g, r, 8, gHover == id ? Mix(fill, 0xFFFFFFFF, cream ? 0.45f : 0.12f) : fill, Mix(fill, 0, 0.35f), 3);
-    if (id >= B_ADD5 && id <= B_ADD30) {   /* big number + small unit */
-        const wchar_t *unit = id == B_ADD30 ? L"秒" : L"分";
+    if (id >= B_ADD1 && id <= B_ADD10) {   /* big number + small unit */
+        const wchar_t *unit = id == B_ADD1 ? L"分" : L"秒";
         float wn = Text(g, s, r, 19, 0, 1), wu = Text(g, unit, r, 10.5f, 0, 1), x0 = r.x + (r.w - wn - wu - 1.5f) / 2;
         Text(g, s, (RF){ x0, r.y, wn, r.h }, 19, ink, 0);
         Text(g, unit, (RF){ x0 + wn + 1.5f, r.y + 3.5f, wu, r.h }, 10.5f, ink, 0);
@@ -370,22 +380,25 @@ static void Render(void)
 /* ---------- behaviour ---------- */
 static void Schedule(void)
 {
-    long long d = tl_next_change_ms(&gT, Now());
+    long long now = Now();
+    long long d = tl_next_change_ms(&gT, now);
     KillTimer(gWnd, TM_TICK);
     if (d >= 0) SetTimer(gWnd, TM_TICK, (UINT)d + 2, NULL);
-    if (gT.st == TL_ALARM) SetTimer(gWnd, TM_ALARM, 500, NULL);
+    if (tl_ringing(&gT, now)) SetTimer(gWnd, TM_ALARM, 500, NULL);
     else KillTimer(gWnd, TM_ALARM);
 }
 static void SyncAlarm(void)
 {
     FLASHWINFO fi = { sizeof fi, gWnd, FLASHW_TRAY | FLASHW_TIMERNOFG, 0, 0 };
-    if (gT.st == TL_ALARM && !gRinging) {
+    int ring = tl_ringing(&gT, Now());
+    if (ring && !gRinging) {
         gRinging = gBlinkOn = 1;
         if (IsIconic(gWnd)) ShowWindow(gWnd, SW_SHOWNOACTIVATE);
         AlarmStart();
         FlashWindowEx(&fi);
-    } else if (gT.st != TL_ALARM && gRinging) {
+    } else if (!ring && gRinging) {
         gRinging = 0;
+        gBlinkOn = 1;   /* leave the display lit once the ring (and blink) end */
         AlarmStop();
         fi.dwFlags = FLASHW_STOP;
         FlashWindowEx(&fi);
@@ -396,13 +409,8 @@ static void Press(int id)
 {
     long long now = Now();
     if (id == B_CLOSE) { PostMessageW(gWnd, WM_CLOSE, 0, 0); return; }
-    if (id == B_LCD) {   /* click stops a ringing alarm; double-click toggles compact mode */
-        if (tl_stop_alarm(&gT)) { SyncAlarm(); Click(); }
-        if (now - gLastLcd <= (long long)GetDoubleClickTime()) {
-            gH = gH == H_LOG ? H_COMPACT : H_LOG;   /* top-left stays put */
-            now = 0;
-        }
-        gLastLcd = now;
+    if (id == B_LCD) {   /* click toggles compact (display-only) mode; does not stop the alarm */
+        gH = gH == H_LOG ? H_COMPACT : H_LOG;   /* top-left stays put */
         return;
     }
     if (id == B_PIN) {
@@ -411,9 +419,9 @@ static void Press(int id)
         return;
     }
     if (id <= 9) tl_digit(&gT, id, now);
-    else if (id == B_ADD5) tl_add(&gT, 300, now);
     else if (id == B_ADD1) tl_add(&gT, 60, now);
     else if (id == B_ADD30) tl_add(&gT, 30, now);
+    else if (id == B_ADD10) tl_add(&gT, 10, now);
     else if (id == B_BS) tl_backspace(&gT, now);
     else if (id == B_RESET) tl_reset(&gT, now);
     else if (id == B_START) tl_startstop(&gT, now);
@@ -470,8 +478,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (wp == TM_TICK) {
             tl_tick(&gT, Now());
         } else if (wp == TM_ALARM) {
-            gBlinkOn = !gBlinkOn;
-            if (Now() - gT.alarm_ms >= TL_RING_SEC * 1000LL) tl_stop_alarm(&gT);  /* back to the measured time */
+            gBlinkOn = !gBlinkOn;   /* whole-display blink while ringing; count-up continues after */
         } else {
             KillTimer(h, TM_CLICKCLOSE);
             ClickClose();
@@ -519,19 +526,25 @@ static int Shot(const wchar_t *file, const wchar_t *what)
     HBITMAP hb;
     GpBitmap *bm;
     if (!wcscmp(what, L"pinned")) gTop = 1;
-    if (!wcscmp(what, L"stopwatch")) { tl_startstop(&gT, t0); t0 += 83400; }   /* 0:01:23 */
+    if (!wcscmp(what, L"stopwatch")) { tl_startstop(&gT, t0); t0 += 83400; }   /* 0:01:23, blue */
+    if (!wcscmp(what, L"five")) tl_digit(&gT, 5, 0);                           /* 0:05:00, red */
     if (!wcscmp(what, L"entered") || !wcscmp(what, L"bs")) for (i = 0; i < 3; i++) tl_digit(&gT, L"130"[i] - L'0', 0);
     if (!wcscmp(what, L"bs")) { tl_backspace(&gT, 0); gPress = B_BS; }
     if (!wcscmp(what, L"entered")) gHover = 7;
     if (!wcscmp(what, L"icon")) for (i = 0; i < 2; i++) tl_digit(&gT, L"30"[i] - L'0', 0);   /* 0:30:00 */
     if (!wcscmp(what, L"hover")) gHover = 8;
     if (!wcscmp(what, L"compact")) gH = H_COMPACT;
-    if (!wcscmp(what, L"running") || !wcscmp(what, L"compact") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm")) {
+    if (!wcscmp(what, L"running") || !wcscmp(what, L"compact") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm") || !wcscmp(what, L"over") || !wcscmp(what, L"overlong")) {
         tl_digit(&gT, 2, 0); tl_digit(&gT, 5, 0);
         tl_startstop(&gT, t0);
         t0 += 746000;   /* 12:34 left */
         if (!wcscmp(what, L"paused")) tl_startstop(&gT, t0);
-        if (!wcscmp(what, L"alarm")) tl_tick(&gT, t0 += 754000);
+        if (!wcscmp(what, L"alarm") || !wcscmp(what, L"over") || !wcscmp(what, L"overlong")) {
+            tl_tick(&gT, t0 += 754000);
+            gBlinkOn = 1;
+            if (!wcscmp(what, L"overlong")) t0 += 185000;   /* 0:03:05, after the 2 min ring */
+            else t0 += 12000;                                /* 0:00:12, still ringing */
+        }
     }
     hb = RenderDib(t0, 2, &w, &h, &bits);
     GdipCreateBitmapFromScan0(w, h, w * 4, PixelFormat32bppPARGB, (BYTE *)bits, &bm);
