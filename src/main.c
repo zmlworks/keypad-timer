@@ -220,7 +220,7 @@ static void DrawLcd(GpGraphics *g, long long now)
     static const ARGB inkc[3] = { LCD_INK, LCD_RED, LCD_BLUE };
     const float dw = 25.5f, dh = 64, th = 7.5f, gap = 3.6f, colw = 9, y = 48;
     int s = tl_display(&gT, now), dig[6], i, accent = tl_accent(&gT, now), from = tl_sig_from(s);
-    int lit = !(tl_ringing(&gT, now) && !gBlinkOn), colon = lit && tl_colon_on(&gT, now);
+    int lit = tl_alarm_lit(&gT, now), colon = lit && tl_colon_on(&gT, now);
     float x = 22, cs = 6.8f;
     GpSolidFill *ink[3], *off;
     FillRRc(g, (RF){ 12, 32, W_LOG - 24, 104 }, 10, ARGB(255, 34, 30, 32));     /* bezel */
@@ -230,15 +230,16 @@ static void DrawLcd(GpGraphics *g, long long now)
     dig[0] = s / 36000 ? s / 36000 : -1; dig[1] = s / 3600 % 10;   /* H H : M M : S S */
     dig[2] = s / 600 % 6; dig[3] = s / 60 % 10;
     dig[4] = s % 60 / 10; dig[5] = s % 10;
-    for (i = 0; i < 3; i++)   /* H / M / S along the bottom of the panel, slightly right */
-        Text(g, cap[i], (RF){ x + 2.5f + i * (2 * (dw + gap) + colw), 116, 2 * dw + gap, 14 }, 8, LCD_CAP, 0);
+    for (i = 0; i < 3; i++)   /* H / M / S along the bottom of the panel, slightly larger */
+        Text(g, cap[i], (RF){ x + 2.5f + i * (2 * (dw + gap) + colw), 114, 2 * dw + gap, 16 }, 10, LCD_CAP, 0);
     for (i = 0; i < 6; i++) {
-        int a = (accent && i >= from) ? accent : 0;
+        int a = accent == 1 ? (dig[i] > 0 ? 1 : 0)   /* setting: each non-zero digit, zeros and colons stay normal */
+              : accent == 2 && i >= from ? 2 : 0;    /* stopwatch / overtime: significant suffix */
         Digit(g, (GpBrush *)ink[a], (GpBrush *)off, lit ? dig[i] : -1, x, y, dw, dh, th);
         x += dw + gap;
         if (i == 1 || i == 3) {
             float c = x + colw / 2 - gap / 2 - 0.5f, v;
-            int ca = (accent && from <= i) ? accent : 0;   /* colon red/blue only between significant digits */
+            int ca = (accent == 2 && from <= i) ? 2 : 0;   /* colons: normal while setting; blue between significant digits */
             for (v = 0.30f; v < 0.8f; v += 0.40f) {   /* colon: two slanted squares */
                 float q[8] = { c - cs / 2, dh * v - cs / 2, c + cs / 2, dh * v - cs / 2, c + cs / 2, dh * v + cs / 2, c - cs / 2, dh * v + cs / 2 };
                 Poly(g, (GpBrush *)(colon ? ink[ca] : off), q, 4, 0, y, dh);   /* blinks while running */
@@ -409,7 +410,9 @@ static void Press(int id)
 {
     long long now = Now();
     if (id == B_CLOSE) { PostMessageW(gWnd, WM_CLOSE, 0, 0); return; }
-    if (id == B_LCD) {   /* click toggles compact (display-only) mode; does not stop the alarm */
+    if (id == B_LCD) {
+        /* compact + sounding: first click silences (count-up continues, stay compact); next click expands */
+        if (gH == H_COMPACT && tl_silence(&gT, now)) { SyncAlarm(); Click(); return; }
         gH = gH == H_LOG ? H_COMPACT : H_LOG;   /* top-left stays put */
         return;
     }
@@ -478,7 +481,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (wp == TM_TICK) {
             tl_tick(&gT, Now());
         } else if (wp == TM_ALARM) {
-            gBlinkOn = !gBlinkOn;   /* whole-display blink while ringing; count-up continues after */
+            gBlinkOn = !gBlinkOn;   /* heartbeat; DrawLcd uses tl_alarm_lit so the count shows on the lit half */
         } else {
             KillTimer(h, TM_CLICKCLOSE);
             ClickClose();

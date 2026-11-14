@@ -23,11 +23,12 @@ Windows 用の小さなキッチンタイマーです。市販のタイマーと
 - `BS` は最後に入れた数字を1桁消します（`130` → `13` → `1` → 0）。計測中・一時停止中は効きません。
 - `スタート / ストップ` で開始します（自動では始まりません）。計測中に押すと一時停止、もう一度押すと再開します。
 - `リセット` を押すと、直前に計測していた時間に戻ります。もう一度押すと 0 になります。
-- 設定した時間とカウントダウン中は、先頭の 0 を除いた桁が赤い液晶色になります（たとえば 5 分の `0:05:00` では `5:00` だけが赤）。ストップウォッチでは同じ規則で青い液晶色になります。
-- タイマーが 0 になるとアラームが鳴り、経過秒を 0 から青で数え続けます。鳴っている間は表示全体が点滅します。鳴り始めてから 2 分で音は自動で止まりますが、経過のカウントは `スタート / ストップ` か `リセット` を押すまで止まりません（押すと直前の時間に戻るので、もう一度 `スタート / ストップ` を押せば同じ時間を計れます）。
+- 時間を設定しているときは、0 以外の数字だけが赤い液晶色になります（5 分の `0:05:00` では `5` だけ、`1:30:00` では `1` と `3`）。コロンは通常の色のままです。カウントダウンが始まると、数字はすべて通常の黒になります。
+- ストップウォッチでは、先頭の 0 を除いた桁が青い液晶色になります（たとえば `0:01:23` では `1:23`）。
+- タイマーが 0 になるとアラームが鳴り、経過秒を 0 から青で数え続けます。鳴っている間は表示全体が 1 秒周期で点滅しますが、点灯している半秒にはそのときの経過秒が見えます。鳴り始めてから 2 分で音は自動で止まりますが、経過のカウントは `スタート / ストップ` か `リセット` を押すまで止まりません（押すと直前の時間に戻るので、もう一度 `スタート / ストップ` を押せば同じ時間を計れます）。
 - 0:00:00 のときに `スタート / ストップ` を押すと **ストップウォッチ** になります（最大 99:59:59、アラームなし）。もう一度押すと一時停止・再開、`リセット` で 0:00:00 に戻ります。動いている間は数字・加算・BS は効きません。
 - 計測中はコロンが1秒周期で点滅します（止まっているときは点灯のまま）。終了後の経過カウントでも、音が止まったあとは同じようにコロンが点滅します。
-- 表示部をクリックすると、表示部から上だけの小さな表示になります（もう一度クリックで元に戻る）。小さな表示のときは、もう一度クリックして全体を出してから `スタート / ストップ` か `リセット` でアラームや経過カウントを止めます。
+- 表示部をクリックすると、表示部から上だけの小さな表示になります（もう一度クリックで元に戻る）。小さな表示でアラームが鳴っているときは、最初のクリックで音だけ止めます（経過のカウントはそのまま、表示も小さくしたまま）。次のクリックで全体に戻ります。
 - 前の時間が表示されているときに数字を押すと、続きではなく新しく入力し直します。
 - 誤操作を防ぐため、**キーボードでは一切操作できません**（マウス／タッチのみ）。タイマーのウィンドウはクリックしても入力フォーカスを奪いません。
 - 右上のピンのボタンで「常に手前に表示」を切り替えられます（起動時はオフ）。ウィンドウは何もないところをドラッグして動かせます。
@@ -64,11 +65,12 @@ A tiny always-on-top countdown timer for Windows, modeled on commercial kitchen 
 - Digits are entered as **minutes**: the last two digits are minutes, anything above is hours (`5` = 5 min, `30` = 30 min, `130` = 1 h 30 min, `90` = 1 h 30 min).
 - `1分` / `30秒` / `10秒` add to the displayed time, or to the remaining time while running. `BS` deletes the last digit (`130` → `13` → `1` → 0) when not running.
 - The pin button toggles always-on-top (off at every launch).
-- While a timer is set or counting down, the significant digits are a muted LCD red (for 5 min, `0:05:00` shows only `5:00` in red; leading zeros stay the usual ink). The stopwatch uses the same rule in a muted LCD blue.
-- When the timer reaches 0 the alarm rings and the display counts elapsed seconds up from 0 in blue. The whole display keeps blinking while the alarm sounds. The sound stops 2 min after it starts, but the count continues like a stopwatch until `スタート / ストップ` or `リセット` is pressed, which restores the original duration so one more press runs it again.
+- While setting a time, every non-zero digit is a muted LCD red (for 5 min, `0:05:00` shows only the `5` in red; `1:30:00` shows `1` and `3`). Zeros and colons stay the usual ink. Once the countdown is running (or paused), every digit is the usual black.
+- The stopwatch uses a muted LCD blue on the significant digits (for `0:01:23`, `1:23` is blue).
+- When the timer reaches 0 the alarm rings and the display counts elapsed seconds up from 0 in blue. While it sounds, the whole display blinks on a 1 s cycle (half a second on, half off) and the current elapsed second is shown on the lit half. The sound stops 2 min after it starts, but the count continues like a stopwatch until `スタート / ストップ` or `リセット` is pressed, which restores the original duration so one more press runs it again.
 - With 0:00:00 shown, `スタート / ストップ` starts a **stopwatch** (counts up to 99:59:59, no alarm); the same button pauses/resumes and `リセット` returns to 0:00:00.
 - The colons blink once per second while running and stay lit when stopped. After the alarm sound ends, the overtime count blinks its colons the same way.
-- Click the display for a compact view (title bar + display only); click again to restore. In the compact view, click once more to expand, then press `スタート / ストップ` or `リセット` to stop the alarm or the overtime count.
+- Click the display for a compact view (title bar + display only); click again to restore. If the alarm is sounding in the compact view, the first click silences it (the overtime count continues and the window stays compact); the next click expands. When it is not sounding, a click toggles compact mode as usual.
 - `スタート / ストップ` starts (no auto-start); while running the same button pauses and resumes, and it stops the alarm or overtime count.
 - `リセット` returns to the time that was just measured; press it again for 0.
 - No keyboard operation at all, by design (prevents accidental input). The window never takes keyboard focus.

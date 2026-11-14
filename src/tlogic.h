@@ -17,6 +17,7 @@ typedef struct {
     int remembered;      /* the time of the last START from IDLE */
     int entry;           /* digits typed, as integer HMM (max 4 digits) */
     int ndig;            /* digits typed so far; 0 = next digit starts fresh */
+    int muted;           /* ALARM: 1 if the user silenced the ring; count-up continues */
 } Timer;
 
 void tl_init(Timer *t, int remembered);
@@ -29,6 +30,7 @@ int  tl_startstop(Timer *t, long long now);
 int  tl_reset(Timer *t, long long now);
 int  tl_backspace(Timer *t, long long now); /* delete the last digit (idle only) */
 int  tl_stop_alarm(Timer *t);
+int  tl_silence(Timer *t, long long now); /* stop the ring only if sounding; keep counting */
 /* Returns 1 when a running timer has just reached 0 (enters ALARM). */
 int  tl_tick(Timer *t, long long now);
 /* RUN: 1 while the colon is lit (first half of each second); otherwise always 1.
@@ -36,11 +38,15 @@ int  tl_tick(Timer *t, long long now);
 int  tl_colon_on(const Timer *t, long long now);
 /* ms until the shown second or the colon changes (RUN or ALARM), else -1 */
 long long tl_next_change_ms(const Timer *t, long long now);
-/* 1 while ALARM and the synthesized ring is still playing (first TL_RING_SEC). */
+/* 1 while ALARM, not silenced, and the synthesized ring is still playing (first TL_RING_SEC). */
 int  tl_ringing(const Timer *t, long long now);
+/* During ringing: 1 in the first half of each elapsed second (so the count is visible). Otherwise 1. */
+int  tl_alarm_lit(const Timer *t, long long now);
 /* First significant digit in HH:MM:SS (0 = tens of hours .. 5 = ones of seconds; 6 = none). */
 int  tl_sig_from(int sec);
-/* Accent for significant digits: 0 = none, 1 = timer (red), 2 = stopwatch / overtime (blue). */
+/* 1 if display digit i (0..5) of `sec` is a visible non-zero (for setting-time red). */
+int  tl_digit_nz(int sec, int i);
+/* Accent: 0 = all normal, 1 = setting (red on non-zero digits), 2 = stopwatch / overtime (blue suffix). */
 int  tl_accent(const Timer *t, long long now);
 /* Alarm gain 0..1 at t seconds after the alarm started (fade-in). */
 double tl_alarm_gain(double t, double fade_sec);

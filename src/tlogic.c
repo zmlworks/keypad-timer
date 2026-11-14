@@ -13,6 +13,7 @@ void tl_init(Timer *t, int remembered)
     t->end_ms = t->rem_ms = t->alarm_ms = 0;
     t->entry = 0;
     t->ndig = 0;
+    t->muted = 0;
 }
 
 int tl_entry_to_sec(int entry)
@@ -45,7 +46,13 @@ int tl_display(const Timer *t, long long now)
 
 int tl_ringing(const Timer *t, long long now)
 {
-    return t->st == TL_ALARM && now - t->alarm_ms < TL_RING_SEC * 1000LL;
+    return t->st == TL_ALARM && !t->muted && now - t->alarm_ms < TL_RING_SEC * 1000LL;
+}
+
+int tl_alarm_lit(const Timer *t, long long now)
+{
+    if (!tl_ringing(t, now)) return 1;
+    return (now - t->alarm_ms) % 1000 < 500;   /* lit on the first half of each second */
 }
 
 int tl_sig_from(int sec)
@@ -59,11 +66,22 @@ int tl_sig_from(int sec)
     return 6;
 }
 
+int tl_digit_nz(int sec, int i)
+{
+    int s = clampsec(sec), d;
+    if (i < 0 || i > 5) return 0;
+    d = i == 0 ? s / 36000 : i == 1 ? s / 3600 % 10
+      : i == 2 ? s / 600 % 6 : i == 3 ? s / 60 % 10
+      : i == 4 ? s % 60 / 10 : s % 10;
+    return d > 0;   /* hidden tens-of-hours (0) is not non-zero */
+}
+
 int tl_accent(const Timer *t, long long now)
 {
     if (tl_display(t, now) <= 0) return 0;
     if (t->st == TL_ALARM || t->sw) return 2;   /* blue: stopwatch or overtime */
-    return 1;                                   /* red: a timer is set or counting down */
+    if (t->st != TL_IDLE) return 0;             /* countdown / pause: all normal ink */
+    return 1;                                   /* setting: red on each non-zero digit */
 }
 
 int tl_stop_alarm(Timer *t)
@@ -72,6 +90,14 @@ int tl_stop_alarm(Timer *t)
     t->st = TL_IDLE;
     t->disp = t->remembered;
     t->ndig = 0;
+    t->muted = 0;
+    return 1;
+}
+
+int tl_silence(Timer *t, long long now)
+{
+    if (!tl_ringing(t, now)) return 0;
+    t->muted = 1;   /* sound and blink stop; overtime count continues */
     return 1;
 }
 
@@ -147,6 +173,7 @@ int tl_reset(Timer *t, long long now)
     }
     t->sw = 0;
     t->ndig = 0;
+    t->muted = 0;
     return 1;
 }
 
@@ -174,6 +201,7 @@ int tl_tick(Timer *t, long long now)
     if (t->st == TL_RUN && !t->sw && now >= t->end_ms) {
         t->st = TL_ALARM;
         t->alarm_ms = now;
+        t->muted = 0;
         return 1;
     }
     return 0;

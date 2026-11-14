@@ -30,9 +30,16 @@ int main(void)
     EQ(tl_tick(&t, 180999), 0); EQ(tl_display(&t, 180999), 1);
     EQ(tl_tick(&t, 181000), 1); EQ(t.st, TL_ALARM); EQ(tl_display(&t, 181000), 0);
     EQ(tl_ringing(&t, 181000), 1); EQ(tl_accent(&t, 181000), 0);          /* 0:00:00, no accent yet */
+    /* blink 1 s cycle (500 ms lit / 500 ms off) while the count keeps advancing */
+    EQ(tl_alarm_lit(&t, 181000), 1); EQ(tl_alarm_lit(&t, 181499), 1); EQ(tl_alarm_lit(&t, 181500), 0);
+    EQ(tl_display(&t, 181500), 0);                                       /* off phase still holds 0, not frozen later */
     EQ(tl_display(&t, 181999), 0); EQ(tl_display(&t, 182000), 1); EQ(tl_accent(&t, 182000), 2);
+    EQ(tl_alarm_lit(&t, 182000), 1); EQ(tl_alarm_lit(&t, 182499), 1); EQ(tl_alarm_lit(&t, 182500), 0);
+    EQ(tl_display(&t, 182500), 1); EQ(tl_display(&t, 183000), 2);         /* next second is visible on the lit half */
+    EQ(tl_next_change_ms(&t, 182000), 500); EQ(tl_next_change_ms(&t, 182200), 300);
     EQ(tl_colon_on(&t, 181000), 1); EQ(tl_colon_on(&t, 240999), 1);       /* solid colon while ringing */
     EQ(tl_ringing(&t, 181000 + 120000 - 1), 1); EQ(tl_ringing(&t, 181000 + 120000), 0);
+    EQ(tl_alarm_lit(&t, 181000 + 120000), 1);                            /* always lit once the sound has stopped */
     EQ(tl_display(&t, 181000 + 120000), 120);                            /* still counting after the ring */
     EQ(tl_display(&t, 181000 + 185000), 185);                            /* and past 3 min, like a stopwatch */
     EQ(tl_colon_on(&t, 181000 + 120000), 1); EQ(tl_colon_on(&t, 181000 + 120500), 0);
@@ -105,14 +112,29 @@ int main(void)
     EQ(tl_sig_from(5), 5); EQ(tl_sig_from(10), 4); EQ(tl_sig_from(60), 3);
     EQ(tl_sig_from(300), 3); EQ(tl_sig_from(600), 2);
     EQ(tl_sig_from(3600), 1); EQ(tl_sig_from(36000), 0);
+    /* setting: only non-zero digits (5 min -> only the 5; 1:30:00 -> 1 and 3) */
+    EQ(tl_digit_nz(300, 0), 0); EQ(tl_digit_nz(300, 1), 0); EQ(tl_digit_nz(300, 2), 0);
+    EQ(tl_digit_nz(300, 3), 1); EQ(tl_digit_nz(300, 4), 0); EQ(tl_digit_nz(300, 5), 0);
+    EQ(tl_digit_nz(5400, 1), 1); EQ(tl_digit_nz(5400, 2), 1); EQ(tl_digit_nz(5400, 3), 0);
+    EQ(tl_digit_nz(5400, 0), 0); EQ(tl_digit_nz(0, 5), 0);
     tl_init(&t, 0); EQ(tl_accent(&t, 0), 0);
-    keys(&t, "5"); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1); EQ(tl_sig_from(t.disp), 3);
-    tl_startstop(&t, 0); EQ(tl_accent(&t, 0), 1);            /* countdown stays red */
+    keys(&t, "5"); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1);
+    tl_startstop(&t, 0); EQ(tl_accent(&t, 0), 0);            /* countdown: all normal ink */
+    tl_startstop(&t, 1000); EQ(t.st, TL_PAUSE); EQ(tl_accent(&t, 0), 0);
+    tl_startstop(&t, 1000);
     tl_tick(&t, 300000); EQ(t.st, TL_ALARM);
     EQ(tl_accent(&t, 300000), 0); EQ(tl_accent(&t, 305000), 2);
-    tl_reset(&t, 305000); EQ(t.st, TL_IDLE); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1);
+    EQ(tl_silence(&t, 305000), 1); EQ(t.st, TL_ALARM); EQ(tl_ringing(&t, 305000), 0);
+    EQ(tl_display(&t, 310000), 10); EQ(tl_accent(&t, 310000), 2);  /* silenced, still counting */
+    EQ(tl_silence(&t, 310000), 0);                                 /* already quiet */
+    EQ(tl_alarm_lit(&t, 310000), 1);
+    tl_reset(&t, 310000); EQ(t.st, TL_IDLE); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1);
+    /* silence after the 2 min auto-stop does nothing */
+    tl_startstop(&t, 0); tl_tick(&t, 300000);
+    EQ(tl_silence(&t, 300000 + 120000), 0); EQ(t.st, TL_ALARM); EQ(t.muted, 0);
     tl_init(&t, 0); tl_startstop(&t, 0); EQ(t.sw, 1);
     EQ(tl_accent(&t, 0), 0); EQ(tl_accent(&t, 2000), 2);     /* stopwatch is blue once past 0 */
+    EQ(tl_sig_from(tl_display(&t, 83400)), 3);               /* 0:01:23, suffix from the 1 */
     /* fade curve */
     n++; if (fabs(tl_alarm_gain(0, 30) - pow(10, -TL_FADE_DB / 20)) > 1e-9) { fails++; puts("FAIL gain0"); }
     n++; if (fabs(tl_alarm_gain(30, 30) - 1) > 1e-9 || fabs(tl_alarm_gain(500, 30) - 1) > 1e-9) { fails++; puts("FAIL gainmax"); }
