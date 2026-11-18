@@ -16,9 +16,9 @@ Windows 用の小さなキッチンタイマーです。市販のタイマーと
 | `5` | 0:05:00（5分） |
 | `3` `0` | 0:30:00（30分） |
 | `1` `3` `0` | 1:30:00（1時間30分） |
-| `9` `0` | 1:30:00（60分以上は繰り上がり） |
+| `9` `0` | 0:90:00（スタートすると 1:30:00 に繰り上がる） |
 
-- 数字は **分** として入ります。下2桁が分、それより上が時間です。秒はふだん使わないので数字では入りません。
+- 数字は **分** として入ります。下2桁が分、それより上が時間です。秒はふだん使わないので数字では入りません。分が 60 以上でも、入力中はそのまま（`90` なら `0:90:00`）表示し、`スタート / ストップ` を押したときに繰り上がります。
 - `1分` `30秒` `10秒` は表示中の時間に足します。計測中に押すと残り時間が延びます。
 - `BS` は最後に入れた数字を1桁消します（`130` → `13` → `1` → 0）。計測中・一時停止中は効きません。
 - `スタート / ストップ` で開始します（自動では始まりません）。計測中に押すと一時停止、もう一度押すと再開します。
@@ -62,7 +62,7 @@ Win32 API と GDI+（Windows 標準）だけで書いた C のプログラムで
 
 A tiny always-on-top countdown timer for Windows, modeled on commercial kitchen timers with a 0–9 keypad.
 
-- Digits are entered as **minutes**: the last two digits are minutes, anything above is hours (`5` = 5 min, `30` = 30 min, `130` = 1 h 30 min, `90` = 1 h 30 min).
+- Digits are entered as **minutes**: the last two digits are minutes, anything above is hours (`5` = 5 min, `30` = 30 min, `130` = 1 h 30 min). Values of 60 or more stay as typed while you enter them (`90` shows `0:90:00`) and only roll over when you press `スタート / ストップ` (to `1:30:00`).
 - `1分` / `30秒` / `10秒` add to the displayed time, or to the remaining time while running. `BS` deletes the last digit (`130` → `13` → `1` → 0) when not running.
 - The pin button toggles always-on-top (off at every launch).
 - While setting a time, every non-zero digit is a muted LCD red (for 5 min, `0:05:00` shows only the `5` in red; `1:30:00` shows `1` and `3`). Zeros and colons stay the usual ink. Once the countdown is running (or paused), every digit is the usual black.

@@ -4,11 +4,27 @@
 
 static int clampsec(long long s) { return s < 0 ? 0 : s > TL_MAX_SEC ? TL_MAX_SEC : (int)s; }
 
+/* Split a normalized duration into 0-99 / 0-59 / 0-59 display fields. */
+static void set_raw_norm(Timer *t, int sec)
+{
+    int s = clampsec(sec);
+    t->raw_h = s / 3600;
+    t->raw_m = s / 60 % 60;
+    t->raw_s = s % 60;
+    t->disp = s;
+}
+
+/* IDLE duration from the (possibly un-normalized) raw fields. Carry at 60 happens only here / at start. */
+static void sync_disp(Timer *t)
+{
+    t->disp = clampsec((long long)t->raw_h * 3600 + (long long)t->raw_m * 60 + t->raw_s);
+}
+
 void tl_init(Timer *t, int remembered)
 {
     t->st = TL_IDLE;
     t->remembered = clampsec(remembered);
-    t->disp = t->remembered;
+    set_raw_norm(t, t->remembered);
     t->sw = 0;
     t->end_ms = t->rem_ms = t->alarm_ms = 0;
     t->entry = 0;
@@ -42,6 +58,27 @@ int tl_display(const Timer *t, long long now)
     case TL_ALARM: return (int)(v / 1000);   /* elapsed since the timer reached 0 */
     default:       return t->disp;
     }
+}
+
+void tl_digits(const Timer *t, long long now, int dig[6])
+{
+    int h, m, s;
+    if (t->st == TL_IDLE) {
+        h = t->raw_h;
+        m = t->raw_m;
+        s = t->raw_s;
+    } else {
+        int sec = tl_display(t, now);
+        h = sec / 3600;
+        m = sec / 60 % 60;
+        s = sec % 60;
+    }
+    dig[0] = h / 10 ? h / 10 : -1;
+    dig[1] = h % 10;
+    dig[2] = m / 10;
+    dig[3] = m % 10;
+    dig[4] = s / 10;
+    dig[5] = s % 10;
 }
 
 int tl_ringing(const Timer *t, long long now)
@@ -88,7 +125,7 @@ int tl_stop_alarm(Timer *t)
 {
     if (t->st != TL_ALARM) return 0;
     t->st = TL_IDLE;
-    t->disp = t->remembered;
+    set_raw_norm(t, t->remembered);   /* restore the normalized duration that was timed */
     t->ndig = 0;
     t->muted = 0;
     return 1;
@@ -109,7 +146,10 @@ int tl_digit(Timer *t, int d, long long now)
     if (t->ndig == 0) t->entry = 0;          /* fresh input, no appending */
     t->entry = (t->entry * 10 + d) % 10000;  /* keep the last 4 digits */
     if (t->ndig < 4) t->ndig++;
-    t->disp = tl_entry_to_sec(t->entry);
+    t->raw_h = t->entry / 100;
+    t->raw_m = t->entry % 100;
+    t->raw_s = 0;                             /* show 0:90:00 as typed; normalize at start */
+    sync_disp(t);
     return 1;
 }
 
@@ -119,10 +159,21 @@ int tl_add(Timer *t, int sec, long long now)
     if (t->sw && t->st != TL_IDLE) return 0;   /* nothing to add to a stopwatch */
     switch (t->st) {
     case TL_ALARM: return tl_stop_alarm(t);
-    case TL_IDLE:
-        t->disp = clampsec((long long)t->disp + sec);
+    case TL_IDLE: {
+        /* 1分 adds to minutes, 10秒/30秒 add to seconds. Carry only at 100 (2 display digits), not at 60. */
+        long long rs = (long long)t->raw_s + (sec % 60);
+        long long rm = (long long)t->raw_m + (sec / 60) + rs / 100;
+        rs %= 100;
+        long long rh = (long long)t->raw_h + rm / 100;
+        rm %= 100;
+        if (rh > 99) { rh = 99; rm = 99; rs = 99; }
+        t->raw_h = (int)rh;
+        t->raw_m = (int)rm;
+        t->raw_s = (int)rs;
+        sync_disp(t);
         t->ndig = 0;  /* next digit starts fresh */
         return 1;
+    }
     case TL_PAUSE:
         rem = t->rem_ms + (long long)sec * 1000;
         t->rem_ms = rem > TL_MAX_SEC * 1000LL ? TL_MAX_SEC * 1000LL : rem;
@@ -140,6 +191,8 @@ int tl_startstop(Timer *t, long long now)
 {
     switch (t->st) {
     case TL_IDLE:   /* a time shown starts the timer; 0:00:00 starts the stopwatch */
+        sync_disp(t);                     /* 0:90:00 -> 1:30:00 only now */
+        set_raw_norm(t, t->disp);
         t->sw = t->disp <= 0;
         t->remembered = t->disp;
         t->end_ms = t->sw ? now : now + (long long)t->disp * 1000;
@@ -165,11 +218,13 @@ int tl_reset(Timer *t, long long now)
     (void)now;
     if (t->st != TL_IDLE) {          /* running, paused or ringing */
         t->st = TL_IDLE;
-        t->disp = t->remembered;
-    } else if (t->disp != t->remembered) {
-        t->disp = t->remembered;     /* back to the last measured time */
+        set_raw_norm(t, t->remembered);
+    } else if (t->raw_h != t->remembered / 3600 ||
+               t->raw_m != t->remembered / 60 % 60 ||
+               t->raw_s != t->remembered % 60) {
+        set_raw_norm(t, t->remembered); /* back to the last measured time (normalized) */
     } else {
-        t->disp = 0;                 /* second press: clear to 0 */
+        set_raw_norm(t, 0);          /* second press: clear to 0 */
     }
     t->sw = 0;
     t->ndig = 0;
@@ -183,16 +238,19 @@ int tl_backspace(Timer *t, long long now)
     if (t->st == TL_ALARM) return tl_stop_alarm(t);
     if (t->st != TL_IDLE) return 0;
     if (t->ndig == 0) {               /* shown time (recalled/added): edit it as H MM digits */
-        int e = t->disp / 3600 * 100 + t->disp / 60 % 60, n = 0, k;
-        if (e == 0 && t->disp == 0) return 0;
+        int e = t->raw_h * 100 + t->raw_m, n = 0, k;
+        if (e == 0 && t->raw_s == 0) return 0;
         for (k = e; k > 0; k /= 10) n++;
         t->entry = e;
-        t->ndig = n;
+        t->ndig = n;                  /* seconds are dropped; then the last H/M digit is deleted */
     }
     t->entry /= 10;
     t->ndig--;
     if (t->entry == 0) t->ndig = 0;   /* nothing left: next digit starts fresh */
-    t->disp = tl_entry_to_sec(t->entry);
+    t->raw_h = t->entry / 100;
+    t->raw_m = t->entry % 100;
+    t->raw_s = 0;
+    sync_disp(t);
     return 1;
 }
 

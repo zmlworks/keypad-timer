@@ -21,6 +21,96 @@ int main(void)
     tl_init(&t, 0); keys(&t, "130"); EQ(t.disp, 5400);
     tl_init(&t, 0); keys(&t, "012"); EQ(t.disp, 720);
     tl_init(&t, 0); keys(&t, "12345"); EQ(t.disp, 23 * 3600 + 45 * 60); /* oldest digit drops */
+    /* entry stays un-normalized on the display until start (90 -> 0:90:00, then 1:30:00) */
+    {
+        int d[6];
+        tl_init(&t, 0); keys(&t, "90");
+        EQ(t.disp, 5400);   /* duration is already 90 min, but the fields stay 0:90:00 */
+        tl_digits(&t, 0, d);
+        EQ(d[0], -1); EQ(d[1], 0); EQ(d[2], 9); EQ(d[3], 0); EQ(d[4], 0); EQ(d[5], 0);
+        EQ(tl_startstop(&t, 0), 1);
+        EQ(t.st, TL_RUN); EQ(t.remembered, 5400); EQ(tl_display(&t, 0), 5400);
+        tl_digits(&t, 0, d);
+        EQ(d[0], -1); EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 0); EQ(d[4], 0); EQ(d[5], 0);
+        /* after alarm / stop, restore the normalized duration, not 0:90:00 */
+        EQ(tl_tick(&t, 5400 * 1000LL), 1); EQ(t.st, TL_ALARM);
+        EQ(tl_startstop(&t, 5400 * 1000LL + 5000), 1); EQ(t.st, TL_IDLE); EQ(t.disp, 5400);
+        tl_digits(&t, 0, d);
+        EQ(d[0], -1); EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 0); EQ(d[4], 0); EQ(d[5], 0);
+        /* typing 90 again when remembered is already 1:30:00: reset restores 1:30:00, not 0 */
+        keys(&t, "90");
+        tl_digits(&t, 0, d); EQ(d[2], 9); EQ(d[3], 0);
+        tl_reset(&t, 0); EQ(t.disp, 5400);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 0);
+        tl_reset(&t, 0); EQ(t.disp, 0);   /* second reset still clears */
+    }
+    /* 160 stays 1:60:00 until start, then 2:00:00 */
+    {
+        int d[6];
+        tl_init(&t, 0); keys(&t, "160");
+        EQ(t.disp, 7200);
+        tl_digits(&t, 0, d);
+        EQ(d[0], -1); EQ(d[1], 1); EQ(d[2], 6); EQ(d[3], 0); EQ(d[4], 0); EQ(d[5], 0);
+        tl_startstop(&t, 0); EQ(t.remembered, 7200); EQ(tl_display(&t, 0), 7200);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 2); EQ(d[2], 0); EQ(d[3], 0);
+    }
+    /* 99 stays 0:99:00 until start -> 1:39:00 */
+    {
+        int d[6];
+        tl_init(&t, 0); keys(&t, "99");
+        tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 9); EQ(d[3], 9);
+        tl_startstop(&t, 0); EQ(t.remembered, 99 * 60);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 9);
+    }
+    /* add 1 min / 30 s to an un-normalized entry; seconds may also sit at 60-99 until start */
+    {
+        int d[6], i;
+        tl_init(&t, 0); keys(&t, "90"); tl_add(&t, 60, 0);   /* 0:91:00 */
+        tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 9); EQ(d[3], 1); EQ(d[4], 0); EQ(d[5], 0);
+        EQ(t.disp, 91 * 60);
+        tl_startstop(&t, 0); EQ(t.remembered, 91 * 60);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 1);
+
+        tl_init(&t, 0); keys(&t, "90"); tl_add(&t, 30, 0);   /* 0:90:30 */
+        tl_digits(&t, 0, d);
+        EQ(d[2], 9); EQ(d[3], 0); EQ(d[4], 3); EQ(d[5], 0);
+        tl_startstop(&t, 0); EQ(t.remembered, 90 * 60 + 30);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 0); EQ(d[4], 3); EQ(d[5], 0);
+
+        tl_init(&t, 0);
+        for (i = 0; i < 6; i++) tl_add(&t, 10, 0);          /* 0:00:60 */
+        tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 0); EQ(d[4], 6); EQ(d[5], 0);
+        EQ(t.disp, 60);
+        tl_startstop(&t, 0); EQ(t.remembered, 60); EQ(tl_display(&t, 0), 60);
+        tl_digits(&t, 0, d);
+        EQ(d[3], 1); EQ(d[4], 0); EQ(d[5], 0);
+
+        tl_init(&t, 0);
+        for (i = 0; i < 9; i++) tl_add(&t, 10, 0);          /* 0:00:90 */
+        tl_add(&t, 10, 0);                                   /* 0:00:100 -> carry at 100: 0:01:00 */
+        tl_digits(&t, 0, d);
+        EQ(d[3], 1); EQ(d[4], 0); EQ(d[5], 0);
+        EQ(t.disp, 60);
+
+        /* reset while running after a 90 start restores 1:30:00 */
+        tl_init(&t, 0); keys(&t, "90"); tl_startstop(&t, 0);
+        tl_reset(&t, 1000); EQ(t.st, TL_IDLE); EQ(t.disp, 5400);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 0);
+
+        /* backspace on 0:90:00 deletes the last typed digit: 90 -> 9 */
+        tl_init(&t, 0); keys(&t, "90"); tl_backspace(&t, 0);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 9); EQ(t.disp, 9 * 60);
+    }
     /* start / alarm / remembered */
     tl_init(&t, 0); keys(&t, "3");
     EQ(tl_startstop(&t, 1000), 1); EQ(t.st, TL_RUN); EQ(t.remembered, 180);

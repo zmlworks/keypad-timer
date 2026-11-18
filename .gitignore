@@ -3,3 +3,4 @@ shots/
 *.wav
 *.o
 *.res
+__pycache__/

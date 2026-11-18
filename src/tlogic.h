@@ -9,7 +9,8 @@ typedef enum { TL_IDLE, TL_RUN, TL_PAUSE, TL_ALARM } TLState;
 
 typedef struct {
     TLState st;
-    int disp;            /* IDLE: seconds shown */
+    int disp;            /* IDLE: duration in seconds (normalized); display may differ until start */
+    int raw_h, raw_m, raw_s; /* IDLE display fields; minutes/seconds may be 60-99 until start */
     int sw;              /* 1 = stopwatch (counts up), started with 0:00:00 shown */
     long long end_ms;    /* RUN: timer end time, or stopwatch start time (ms) */
     long long rem_ms;    /* PAUSE: timer ms left, or stopwatch ms elapsed */
@@ -21,8 +22,11 @@ typedef struct {
 } Timer;
 
 void tl_init(Timer *t, int remembered);
-int  tl_entry_to_sec(int entry);         /* "130" -> 1h30m, "90" -> 1h30m */
-int  tl_display(const Timer *t, long long now); /* seconds to show */
+int  tl_entry_to_sec(int entry);         /* "130" -> 1h30m, "90" -> 1h30m (normalized duration) */
+int  tl_display(const Timer *t, long long now); /* seconds to show (IDLE: normalized duration) */
+/* 6 display digits HHMMSS. dig[0] is -1 when tens-of-hours is hidden (zero).
+   In IDLE, minutes and seconds may be 0-99 (shown as typed / added, not carried at 60). */
+void tl_digits(const Timer *t, long long now, int dig[6]);
 /* Button actions. Each returns 1 if something changed, 0 if ignored. */
 int  tl_digit(Timer *t, int d, long long now);
 int  tl_add(Timer *t, int sec, long long now);

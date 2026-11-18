@@ -208,28 +208,28 @@ static void Digit(GpGraphics *g, GpBrush *on, GpBrush *off, int d, float x, floa
     Seg(g, s & 0x40 ? on : off, 1, l + k, r - k, m, t, x, y, h);        /* g */
 }
 /* LCD inks on the olive panel (176,188,156): dark green-black for leading zeros;
-   muted slightly-orange red and ink blue for significant digits — absorbent, not LED-bright. */
+   vivid red / blue for set and stopwatch digits, still with contrast on the panel. */
 #define LCD_INK  ARGB(255, 24, 28, 22)     /* #181C16 */
-#define LCD_RED  ARGB(255, 176, 60, 34)    /* #B03C22 slightly orange muted LCD red */
-#define LCD_BLUE ARGB(255, 30, 60, 136)    /* #1E3C88 muted LCD ink blue */
-#define LCD_OFF  ARGB(34, 30, 40, 24)      /* unlit segments, slightly fainter than before */
-#define LCD_CAP  ARGB(185, 40, 50, 34)     /* H/M/S, slightly darker than before */
+#define LCD_RED  ARGB(255, 220, 16, 24)    /* #DC1018 vivid LCD red */
+#define LCD_BLUE ARGB(255, 16, 56, 220)    /* #1038DC vivid LCD blue */
+#define LCD_OFF  ARGB(34, 30, 40, 24)      /* unlit segments stay faint */
+#define LCD_CAP  ARGB(185, 40, 50, 34)     /* H/M/S */
 static void DrawLcd(GpGraphics *g, long long now)
 {
     static const wchar_t *cap[3] = { L"H", L"M", L"S" };
     static const ARGB inkc[3] = { LCD_INK, LCD_RED, LCD_BLUE };
     const float dw = 25.5f, dh = 64, th = 7.5f, gap = 3.6f, colw = 9, y = 48;
-    int s = tl_display(&gT, now), dig[6], i, accent = tl_accent(&gT, now), from = tl_sig_from(s);
-    int lit = tl_alarm_lit(&gT, now), colon = lit && tl_colon_on(&gT, now);
+    int dig[6], i, accent = tl_accent(&gT, now), from, lit, colon;
     float x = 22, cs = 6.8f;
     GpSolidFill *ink[3], *off;
+    tl_digits(&gT, now, dig);
+    from = tl_sig_from(tl_display(&gT, now));
+    lit = tl_alarm_lit(&gT, now);
+    colon = lit && tl_colon_on(&gT, now);
     FillRRc(g, (RF){ 12, 32, W_LOG - 24, 104 }, 10, ARGB(255, 34, 30, 32));     /* bezel */
     FillRRc(g, (RF){ 18, 38, W_LOG - 36, 92 }, 6, ARGB(255, 176, 188, 156));   /* panel */
     for (i = 0; i < 3; i++) GdipCreateSolidFill(inkc[i], &ink[i]);
     GdipCreateSolidFill(LCD_OFF, &off);
-    dig[0] = s / 36000 ? s / 36000 : -1; dig[1] = s / 3600 % 10;   /* H H : M M : S S */
-    dig[2] = s / 600 % 6; dig[3] = s / 60 % 10;
-    dig[4] = s % 60 / 10; dig[5] = s % 10;
     for (i = 0; i < 3; i++)   /* H / M / S along the bottom of the panel, slightly larger */
         Text(g, cap[i], (RF){ x + 2.5f + i * (2 * (dw + gap) + colw), 114, 2 * dw + gap, 16 }, 10, LCD_CAP, 0);
     for (i = 0; i < 6; i++) {
@@ -356,7 +356,7 @@ static HBITMAP RenderDib(long long now, float scale, int *pw, int *ph, void **bi
 static void Render(void)
 {
     long long now = Now();
-    int w = 0, h = 0, s = tl_display(&gT, now);
+    int w = 0, h = 0, dig[6], th, tm, ts;
     void *bits;
     HBITMAP hb = RenderDib(now, gScale, &w, &h, &bits);
     HDC sdc, mdc;
@@ -374,7 +374,11 @@ static void Render(void)
     DeleteDC(mdc);
     ReleaseDC(NULL, sdc);
     DeleteObject(hb);
-    swprintf(title, 64, L"%d:%02d:%02d - " APPNAME, s / 3600, s / 60 % 60, s % 60);
+    tl_digits(&gT, now, dig);
+    th = (dig[0] < 0 ? 0 : dig[0]) * 10 + dig[1];
+    tm = dig[2] * 10 + dig[3];
+    ts = dig[4] * 10 + dig[5];
+    swprintf(title, 64, L"%d:%02d:%02d - " APPNAME, th, tm, ts);
     SetWindowTextW(gWnd, title);
 }
 
@@ -531,6 +535,7 @@ static int Shot(const wchar_t *file, const wchar_t *what)
     if (!wcscmp(what, L"pinned")) gTop = 1;
     if (!wcscmp(what, L"stopwatch")) { tl_startstop(&gT, t0); t0 += 83400; }   /* 0:01:23, blue */
     if (!wcscmp(what, L"five")) tl_digit(&gT, 5, 0);                           /* 0:05:00, red */
+    if (!wcscmp(what, L"ninety")) { tl_digit(&gT, 9, 0); tl_digit(&gT, 0, 0); } /* 0:90:00 until start */
     if (!wcscmp(what, L"entered") || !wcscmp(what, L"bs")) for (i = 0; i < 3; i++) tl_digit(&gT, L"130"[i] - L'0', 0);
     if (!wcscmp(what, L"bs")) { tl_backspace(&gT, 0); gPress = B_BS; }
     if (!wcscmp(what, L"entered")) gHover = 7;
