@@ -208,10 +208,10 @@ static void Digit(GpGraphics *g, GpBrush *on, GpBrush *off, int d, float x, floa
     Seg(g, s & 0x40 ? on : off, 1, l + k, r - k, m, t, x, y, h);        /* g */
 }
 /* LCD inks on the olive panel (176,188,156): dark green-black for leading zeros;
-   vivid red / blue for set and stopwatch digits, still with contrast on the panel. */
+   red / blue for set and stopwatch digits (v0.5.2 vivid, eased slightly back). */
 #define LCD_INK  ARGB(255, 24, 28, 22)     /* #181C16 */
-#define LCD_RED  ARGB(255, 220, 16, 24)    /* #DC1018 vivid LCD red */
-#define LCD_BLUE ARGB(255, 16, 56, 220)    /* #1038DC vivid LCD blue */
+#define LCD_RED  ARGB(255, 203, 33, 28)    /* #CB211C slightly eased from #DC1018 toward #B03C22 */
+#define LCD_BLUE ARGB(255, 18, 56, 210)    /* #1238D2 barely eased from #1038DC toward #1E3C88 */
 #define LCD_OFF  ARGB(34, 30, 40, 24)      /* unlit segments stay faint */
 #define LCD_CAP  ARGB(185, 40, 50, 34)     /* H/M/S */
 static void DrawLcd(GpGraphics *g, long long now)
@@ -233,16 +233,15 @@ static void DrawLcd(GpGraphics *g, long long now)
     for (i = 0; i < 3; i++)   /* H / M / S along the bottom of the panel, slightly larger */
         Text(g, cap[i], (RF){ x + 2.5f + i * (2 * (dw + gap) + colw), 114, 2 * dw + gap, 16 }, 10, LCD_CAP, 0);
     for (i = 0; i < 6; i++) {
-        int a = accent == 1 ? (dig[i] > 0 ? 1 : 0)   /* setting: each non-zero digit, zeros and colons stay normal */
+        int a = accent == 1 ? (tl_setting_red(&gT, i) ? 1 : 0)
               : accent == 2 && i >= from ? 2 : 0;    /* stopwatch / overtime: significant suffix */
         Digit(g, (GpBrush *)ink[a], (GpBrush *)off, lit ? dig[i] : -1, x, y, dw, dh, th);
         x += dw + gap;
         if (i == 1 || i == 3) {
             float c = x + colw / 2 - gap / 2 - 0.5f, v;
-            int ca = (accent == 2 && from <= i) ? 2 : 0;   /* colons: normal while setting; blue between significant digits */
-            for (v = 0.30f; v < 0.8f; v += 0.40f) {   /* colon: two slanted squares */
+            for (v = 0.30f; v < 0.8f; v += 0.40f) {   /* colon: always the usual ink, never red or blue */
                 float q[8] = { c - cs / 2, dh * v - cs / 2, c + cs / 2, dh * v - cs / 2, c + cs / 2, dh * v + cs / 2, c - cs / 2, dh * v + cs / 2 };
-                Poly(g, (GpBrush *)(colon ? ink[ca] : off), q, 4, 0, y, dh);   /* blinks while running */
+                Poly(g, (GpBrush *)(colon ? ink[0] : off), q, 4, 0, y, dh);   /* blinks while running */
             }
             x += colw;
         }
@@ -309,6 +308,19 @@ static void DrawKey(GpGraphics *g, int id)
         Text(g, unit, (RF){ x0 + wn + 1.5f, r.y + 3.5f, wu, r.h }, 10.5f, ink, 0);
     } else
         Text(g, s, r, id < 10 ? 20 : 15, ink, 0);
+    if (id == 5) {   /* tactile home: a slightly raised ring around the 5, like a fingertip bump */
+        float cx = r.x + r.w / 2, cy = r.y + r.h / 2, d = 25.0f;
+        float x = cx - d / 2, y = cy - d / 2;
+        GpPen *p;
+        GdipCreatePen1(Mix(fill, 0, gPress == id ? 0.32f : 0.26f), 1.25f, UnitWorld, &p);
+        GdipSetPenLineJoin(p, LineJoinRound);
+        GdipDrawEllipse(g, p, x + 0.45f, y + 0.45f, d, d);   /* shadow, lower right */
+        GdipDeletePen(p);
+        GdipCreatePen1(Mix(fill, 0xFFFFFFFF, gPress == id ? 0.16f : 0.30f), 1.15f, UnitWorld, &p);
+        GdipSetPenLineJoin(p, LineJoinRound);
+        GdipDrawEllipse(g, p, x - 0.45f, y - 0.45f, d, d);   /* highlight, upper left */
+        GdipDeletePen(p);
+    }
 }
 
 /* case: flat red with a narrow rounded edge (no lines) */
@@ -540,6 +552,11 @@ static int Shot(const wchar_t *file, const wchar_t *what)
     if (!wcscmp(what, L"bs")) { tl_backspace(&gT, 0); gPress = B_BS; }
     if (!wcscmp(what, L"entered")) gHover = 7;
     if (!wcscmp(what, L"icon")) for (i = 0; i < 2; i++) tl_digit(&gT, L"30"[i] - L'0', 0);   /* 0:30:00 */
+    if (!wcscmp(what, L"withsec")) {   /* 1:30:30, trailing 0 of seconds also red */
+        for (i = 0; i < 3; i++) tl_digit(&gT, L"130"[i] - L'0', 0);
+        tl_add(&gT, 30, 0);
+    }
+    if (!wcscmp(what, L"sec30")) tl_add(&gT, 30, 0);   /* 0:00:30, both seconds digits red */
     if (!wcscmp(what, L"hover")) gHover = 8;
     if (!wcscmp(what, L"compact")) gH = H_COMPACT;
     if (!wcscmp(what, L"running") || !wcscmp(what, L"compact") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm") || !wcscmp(what, L"over") || !wcscmp(what, L"overlong")) {

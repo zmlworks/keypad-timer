@@ -25,14 +25,15 @@ void tl_init(Timer *t, int remembered);
 int  tl_entry_to_sec(int entry);         /* "130" -> 1h30m, "90" -> 1h30m (normalized duration) */
 int  tl_display(const Timer *t, long long now); /* seconds to show (IDLE: normalized duration) */
 /* 6 display digits HHMMSS. dig[0] is -1 when tens-of-hours is hidden (zero).
-   In IDLE, minutes and seconds may be 0-99 (shown as typed / added, not carried at 60). */
+   In IDLE, minutes may be 0-99 (shown as typed / added, carried at 60 only at start).
+   Seconds carry into minutes at 60 immediately during entry. */
 void tl_digits(const Timer *t, long long now, int dig[6]);
 /* Button actions. Each returns 1 if something changed, 0 if ignored. */
 int  tl_digit(Timer *t, int d, long long now);
 int  tl_add(Timer *t, int sec, long long now);
 int  tl_startstop(Timer *t, long long now);
 int  tl_reset(Timer *t, long long now);
-int  tl_backspace(Timer *t, long long now); /* delete the last digit (idle only) */
+int  tl_backspace(Timer *t, long long now); /* idle: seconds first (see tl_backspace), else last H/M digit */
 int  tl_stop_alarm(Timer *t);
 int  tl_silence(Timer *t, long long now); /* stop the ring only if sounding; keep counting */
 /* Returns 1 when a running timer has just reached 0 (enters ALARM). */
@@ -48,9 +49,12 @@ int  tl_ringing(const Timer *t, long long now);
 int  tl_alarm_lit(const Timer *t, long long now);
 /* First significant digit in HH:MM:SS (0 = tens of hours .. 5 = ones of seconds; 6 = none). */
 int  tl_sig_from(int sec);
-/* 1 if display digit i (0..5) of `sec` is a visible non-zero (for setting-time red). */
+/* 1 if display digit i (0..5) of `sec` is a visible non-zero. */
 int  tl_digit_nz(int sec, int i);
-/* Accent: 0 = all normal, 1 = setting (red on non-zero digits), 2 = stopwatch / overtime (blue suffix). */
+/* 1 if IDLE setting digit i (0..5) should be red: each non-zero digit, and the
+   ones of seconds when seconds are non-zero (so 0:00:30 lights both 3 and 0). */
+int  tl_setting_red(const Timer *t, int i);
+/* Accent: 0 = all normal, 1 = setting (red digits), 2 = stopwatch / overtime (blue suffix). */
 int  tl_accent(const Timer *t, long long now);
 /* Alarm gain 0..1 at t seconds after the alarm started (fade-in). */
 double tl_alarm_gain(double t, double fade_sec);

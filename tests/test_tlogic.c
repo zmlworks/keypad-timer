@@ -66,7 +66,7 @@ int main(void)
         tl_digits(&t, 0, d);
         EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 9);
     }
-    /* add 1 min / 30 s to an un-normalized entry; seconds may also sit at 60-99 until start */
+    /* add 1 min / 30 s to an un-normalized entry; seconds carry at 60 immediately, minutes wait for start */
     {
         int d[6], i;
         tl_init(&t, 0); keys(&t, "90"); tl_add(&t, 60, 0);   /* 0:91:00 */
@@ -85,20 +85,33 @@ int main(void)
         EQ(d[1], 1); EQ(d[2], 3); EQ(d[3], 0); EQ(d[4], 3); EQ(d[5], 0);
 
         tl_init(&t, 0);
-        for (i = 0; i < 6; i++) tl_add(&t, 10, 0);          /* 0:00:60 */
+        for (i = 0; i < 5; i++) tl_add(&t, 10, 0);          /* 0:00:50 */
         tl_digits(&t, 0, d);
-        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 0); EQ(d[4], 6); EQ(d[5], 0);
+        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 0); EQ(d[4], 5); EQ(d[5], 0);
+        EQ(t.disp, 50);
+        tl_add(&t, 10, 0);                                   /* carry at 60 immediately: 0:01:00 */
+        tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 1); EQ(d[4], 0); EQ(d[5], 0);
         EQ(t.disp, 60);
         tl_startstop(&t, 0); EQ(t.remembered, 60); EQ(tl_display(&t, 0), 60);
         tl_digits(&t, 0, d);
         EQ(d[3], 1); EQ(d[4], 0); EQ(d[5], 0);
 
         tl_init(&t, 0);
-        for (i = 0; i < 9; i++) tl_add(&t, 10, 0);          /* 0:00:90 */
-        tl_add(&t, 10, 0);                                   /* 0:00:100 -> carry at 100: 0:01:00 */
+        tl_add(&t, 30, 0); tl_add(&t, 30, 0);               /* 30秒 twice -> 0:01:00, not 0:00:60 */
         tl_digits(&t, 0, d);
-        EQ(d[3], 1); EQ(d[4], 0); EQ(d[5], 0);
+        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 1); EQ(d[4], 0); EQ(d[5], 0);
         EQ(t.disp, 60);
+
+        tl_init(&t, 0);
+        for (i = 0; i < 59; i++) tl_add(&t, 60, 0);
+        tl_add(&t, 30, 0); tl_add(&t, 30, 0);               /* 0:59:00 + 30 + 30 -> 0:60:00 until start */
+        tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 6); EQ(d[3], 0); EQ(d[4], 0); EQ(d[5], 0);
+        EQ(t.disp, 3600);
+        tl_startstop(&t, 0); EQ(t.remembered, 3600);
+        tl_digits(&t, 0, d);
+        EQ(d[1], 1); EQ(d[2], 0); EQ(d[3], 0);
 
         /* reset while running after a 90 start restores 1:30:00 */
         tl_init(&t, 0); keys(&t, "90"); tl_startstop(&t, 0);
@@ -191,7 +204,31 @@ int main(void)
     tl_init(&t, 0); keys(&t, "13"); tl_backspace(&t, 0); keys(&t, "5"); EQ(t.disp, 15 * 60); /* append after BS */
     tl_init(&t, 5400); tl_backspace(&t, 0); EQ(t.disp, 13 * 60); /* recalled 1:30:00 -> 13 */
     keys(&t, "0"); EQ(t.disp, 5400);                        /* 13 -> 130 again */
-    tl_init(&t, 0); keys(&t, "5"); tl_add(&t, 30, 0); tl_backspace(&t, 0); EQ(t.disp, 0); /* 5:30 -> drops secs, 5 -> 0 */
+    tl_init(&t, 0); keys(&t, "5"); tl_add(&t, 30, 0); tl_backspace(&t, 0); EQ(t.disp, 300); /* 0:05:30 -> 0:05:00 */
+    tl_backspace(&t, 0); EQ(t.disp, 0);                    /* then H/M digits */
+    /* seconds BS: >30 subtract 30, <=30 clear to 0 */
+    {
+        int d[6], i;
+        tl_init(&t, 0);
+        for (i = 0; i < 5; i++) tl_add(&t, 10, 0);          /* 0:00:50 */
+        tl_backspace(&t, 0); tl_digits(&t, 0, d);
+        EQ(d[4], 2); EQ(d[5], 0); EQ(t.disp, 20);           /* 50 -> 20 */
+        tl_backspace(&t, 0); tl_digits(&t, 0, d);
+        EQ(d[4], 0); EQ(d[5], 0); EQ(t.disp, 0);            /* 20 -> 0 */
+
+        tl_init(&t, 0); tl_add(&t, 10, 0); tl_add(&t, 10, 0); tl_add(&t, 10, 0); tl_add(&t, 10, 0); /* 40 */
+        tl_backspace(&t, 0); EQ(t.disp, 10);                /* 40 -> 10 */
+        tl_backspace(&t, 0); EQ(t.disp, 0);                 /* 10 -> 0 */
+
+        tl_init(&t, 0); tl_add(&t, 30, 0);
+        tl_backspace(&t, 0); EQ(t.disp, 0);                 /* exactly 30 -> 0 */
+
+        tl_init(&t, 0); keys(&t, "90"); tl_add(&t, 30, 0);  /* 0:90:30 */
+        tl_backspace(&t, 0); tl_digits(&t, 0, d);
+        EQ(d[2], 9); EQ(d[3], 0); EQ(d[4], 0); EQ(d[5], 0); EQ(t.disp, 90 * 60);
+        tl_backspace(&t, 0); tl_digits(&t, 0, d);           /* seconds already 0: delete last H/M digit */
+        EQ(d[2], 0); EQ(d[3], 9); EQ(t.disp, 9 * 60);
+    }
     tl_init(&t, 0); keys(&t, "1"); tl_startstop(&t, 0);
     EQ(tl_backspace(&t, 1000), 0); EQ(t.st, TL_RUN);       /* ignored while running */
     tl_startstop(&t, 2000); EQ(tl_backspace(&t, 0), 0); EQ(t.st, TL_PAUSE);
@@ -207,9 +244,22 @@ int main(void)
     EQ(tl_digit_nz(300, 3), 1); EQ(tl_digit_nz(300, 4), 0); EQ(tl_digit_nz(300, 5), 0);
     EQ(tl_digit_nz(5400, 1), 1); EQ(tl_digit_nz(5400, 2), 1); EQ(tl_digit_nz(5400, 3), 0);
     EQ(tl_digit_nz(5400, 0), 0); EQ(tl_digit_nz(0, 5), 0);
+    /* setting red: trailing 0 of seconds is also red when seconds are present */
+    tl_init(&t, 0); keys(&t, "5");
+    EQ(tl_setting_red(&t, 0), 0); EQ(tl_setting_red(&t, 1), 0); EQ(tl_setting_red(&t, 2), 0);
+    EQ(tl_setting_red(&t, 3), 1); EQ(tl_setting_red(&t, 4), 0); EQ(tl_setting_red(&t, 5), 0);
+    tl_init(&t, 0); keys(&t, "130");
+    EQ(tl_setting_red(&t, 1), 1); EQ(tl_setting_red(&t, 2), 1); EQ(tl_setting_red(&t, 3), 0);
+    EQ(tl_setting_red(&t, 4), 0); EQ(tl_setting_red(&t, 5), 0);
+    tl_init(&t, 0); tl_add(&t, 30, 0);                       /* 0:00:30: both 3 and 0 */
+    EQ(tl_setting_red(&t, 3), 0); EQ(tl_setting_red(&t, 4), 1); EQ(tl_setting_red(&t, 5), 1);
+    tl_init(&t, 0); keys(&t, "5"); tl_add(&t, 30, 0);         /* 0:05:30: 5, 3 and 0 */
+    EQ(tl_setting_red(&t, 3), 1); EQ(tl_setting_red(&t, 4), 1); EQ(tl_setting_red(&t, 5), 1);
+    tl_init(&t, 0); EQ(tl_setting_red(&t, 5), 0);             /* 0:00:00, nothing red */
     tl_init(&t, 0); EQ(tl_accent(&t, 0), 0);
     keys(&t, "5"); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1);
     tl_startstop(&t, 0); EQ(tl_accent(&t, 0), 0);            /* countdown: all normal ink */
+    EQ(tl_setting_red(&t, 3), 0);
     tl_startstop(&t, 1000); EQ(t.st, TL_PAUSE); EQ(tl_accent(&t, 0), 0);
     tl_startstop(&t, 1000);
     tl_tick(&t, 300000); EQ(t.st, TL_ALARM);

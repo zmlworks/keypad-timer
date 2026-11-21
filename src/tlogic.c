@@ -14,7 +14,7 @@ static void set_raw_norm(Timer *t, int sec)
     t->disp = s;
 }
 
-/* IDLE duration from the (possibly un-normalized) raw fields. Carry at 60 happens only here / at start. */
+/* IDLE duration from the (possibly un-normalized) raw fields. Minutes may be 60-99 until start. */
 static void sync_disp(Timer *t)
 {
     t->disp = clampsec((long long)t->raw_h * 3600 + (long long)t->raw_m * 60 + t->raw_s);
@@ -113,6 +113,15 @@ int tl_digit_nz(int sec, int i)
     return d > 0;   /* hidden tens-of-hours (0) is not non-zero */
 }
 
+int tl_setting_red(const Timer *t, int i)
+{
+    int dig[6];
+    if (t->st != TL_IDLE || t->disp <= 0 || i < 0 || i > 5) return 0;
+    tl_digits(t, 0, dig);
+    if (dig[i] > 0) return 1;
+    return i == 5 && t->raw_s > 0;   /* trailing 0 of seconds, when seconds are present */
+}
+
 int tl_accent(const Timer *t, long long now)
 {
     if (tl_display(t, now) <= 0) return 0;
@@ -160,13 +169,13 @@ int tl_add(Timer *t, int sec, long long now)
     switch (t->st) {
     case TL_ALARM: return tl_stop_alarm(t);
     case TL_IDLE: {
-        /* 1分 adds to minutes, 10秒/30秒 add to seconds. Carry only at 100 (2 display digits), not at 60. */
+        /* 1分 adds to minutes (carry at 100 until start). 10秒/30秒 add to seconds and carry into minutes at 60 now. */
         long long rs = (long long)t->raw_s + (sec % 60);
-        long long rm = (long long)t->raw_m + (sec / 60) + rs / 100;
-        rs %= 100;
+        long long rm = (long long)t->raw_m + (sec / 60) + rs / 60;
+        rs %= 60;
         long long rh = (long long)t->raw_h + rm / 100;
         rm %= 100;
-        if (rh > 99) { rh = 99; rm = 99; rs = 99; }
+        if (rh > 99) { rh = 99; rm = 99; rs = 59; }
         t->raw_h = (int)rh;
         t->raw_m = (int)rm;
         t->raw_s = (int)rs;
@@ -237,12 +246,18 @@ int tl_backspace(Timer *t, long long now)
     (void)now;
     if (t->st == TL_ALARM) return tl_stop_alarm(t);
     if (t->st != TL_IDLE) return 0;
+    if (t->raw_s > 0) {               /* seconds first: >30 subtract 30, otherwise clear to 0 */
+        t->raw_s = t->raw_s > 30 ? t->raw_s - 30 : 0;
+        sync_disp(t);
+        t->ndig = 0;                  /* next digit starts fresh */
+        return 1;
+    }
     if (t->ndig == 0) {               /* shown time (recalled/added): edit it as H MM digits */
         int e = t->raw_h * 100 + t->raw_m, n = 0, k;
-        if (e == 0 && t->raw_s == 0) return 0;
+        if (e == 0) return 0;
         for (k = e; k > 0; k /= 10) n++;
         t->entry = e;
-        t->ndig = n;                  /* seconds are dropped; then the last H/M digit is deleted */
+        t->ndig = n;
     }
     t->entry /= 10;
     t->ndig--;
