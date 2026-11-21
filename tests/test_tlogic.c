@@ -181,7 +181,23 @@ int main(void)
     tl_reset(&t, 21000); EQ(t.disp, 60);
     /* add buttons */
     tl_init(&t, 0); keys(&t, "5"); tl_add(&t, 30, 0); EQ(t.disp, 330);
-    keys(&t, "2"); EQ(t.disp, 120);                       /* digit after add = fresh */
+    keys(&t, "2"); EQ(t.disp, 150);                       /* fresh H:M, seconds kept: 0:02:30 */
+    {
+        int d[6];
+        tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 2); EQ(d[4], 3); EQ(d[5], 0);
+        /* 0:05:20 then 1 -> 0:01:20, not 0:01:00 */
+        tl_init(&t, 0); keys(&t, "5"); tl_add(&t, 10, 0); tl_add(&t, 10, 0);
+        EQ(t.disp, 320); tl_digits(&t, 0, d);
+        EQ(d[3], 5); EQ(d[4], 2); EQ(d[5], 0);
+        keys(&t, "1"); EQ(t.disp, 80); tl_digits(&t, 0, d);
+        EQ(d[1], 0); EQ(d[2], 0); EQ(d[3], 1); EQ(d[4], 2); EQ(d[5], 0);
+        keys(&t, "3"); EQ(t.disp, 800); tl_digits(&t, 0, d); /* append H:M, still keep seconds: 0:13:20 */
+        EQ(d[2], 1); EQ(d[3], 3); EQ(d[4], 2); EQ(d[5], 0);
+        /* no seconds, ndig==0 (recalled time): digit still starts a fresh H:M, seconds stay 0 */
+        tl_init(&t, 300); keys(&t, "2"); EQ(t.disp, 120);
+        tl_digits(&t, 0, d); EQ(d[3], 2); EQ(d[4], 0); EQ(d[5], 0);
+    }
     tl_init(&t, 0); tl_add(&t, 300, 0); tl_add(&t, 60, 0); tl_add(&t, 30, 0); EQ(t.disp, 390);
     tl_startstop(&t, 0); EQ(t.remembered, 390);
     tl_add(&t, 60, 100000); EQ(tl_display(&t, 100000), 390 - 100 + 60);
@@ -248,13 +264,24 @@ int main(void)
     tl_init(&t, 0); keys(&t, "5");
     EQ(tl_setting_red(&t, 0), 0); EQ(tl_setting_red(&t, 1), 0); EQ(tl_setting_red(&t, 2), 0);
     EQ(tl_setting_red(&t, 3), 1); EQ(tl_setting_red(&t, 4), 0); EQ(tl_setting_red(&t, 5), 0);
-    tl_init(&t, 0); keys(&t, "130");
-    EQ(tl_setting_red(&t, 1), 1); EQ(tl_setting_red(&t, 2), 1); EQ(tl_setting_red(&t, 3), 0);
+    tl_init(&t, 0); keys(&t, "30");                          /* 0:30:00: tens set, ones 0 also red */
+    EQ(tl_setting_red(&t, 1), 0); EQ(tl_setting_red(&t, 2), 1); EQ(tl_setting_red(&t, 3), 1);
     EQ(tl_setting_red(&t, 4), 0); EQ(tl_setting_red(&t, 5), 0);
+    tl_init(&t, 0); keys(&t, "130");                         /* 1:30:00: 1, 3 and the minutes 0 */
+    EQ(tl_setting_red(&t, 1), 1); EQ(tl_setting_red(&t, 2), 1); EQ(tl_setting_red(&t, 3), 1);
+    EQ(tl_setting_red(&t, 4), 0); EQ(tl_setting_red(&t, 5), 0);
+    tl_init(&t, 0); keys(&t, "100");                         /* 1:00:00: hours only, minutes zeros stay normal */
+    EQ(tl_setting_red(&t, 1), 1); EQ(tl_setting_red(&t, 2), 0); EQ(tl_setting_red(&t, 3), 0);
+    EQ(tl_setting_red(&t, 4), 0); EQ(tl_setting_red(&t, 5), 0);
+    tl_init(&t, 0); keys(&t, "105");                         /* 1:05:00: tens of minutes not set, its 0 stays normal */
+    EQ(tl_setting_red(&t, 1), 1); EQ(tl_setting_red(&t, 2), 0); EQ(tl_setting_red(&t, 3), 1);
     tl_init(&t, 0); tl_add(&t, 30, 0);                       /* 0:00:30: both 3 and 0 */
     EQ(tl_setting_red(&t, 3), 0); EQ(tl_setting_red(&t, 4), 1); EQ(tl_setting_red(&t, 5), 1);
     tl_init(&t, 0); keys(&t, "5"); tl_add(&t, 30, 0);         /* 0:05:30: 5, 3 and 0 */
     EQ(tl_setting_red(&t, 3), 1); EQ(tl_setting_red(&t, 4), 1); EQ(tl_setting_red(&t, 5), 1);
+    tl_init(&t, 0); keys(&t, "130"); tl_add(&t, 10, 0); tl_add(&t, 10, 0); /* 1:30:20 */
+    EQ(tl_setting_red(&t, 1), 1); EQ(tl_setting_red(&t, 2), 1); EQ(tl_setting_red(&t, 3), 1);
+    EQ(tl_setting_red(&t, 4), 1); EQ(tl_setting_red(&t, 5), 1);
     tl_init(&t, 0); EQ(tl_setting_red(&t, 5), 0);             /* 0:00:00, nothing red */
     tl_init(&t, 0); EQ(tl_accent(&t, 0), 0);
     keys(&t, "5"); EQ(t.disp, 300); EQ(tl_accent(&t, 0), 1);

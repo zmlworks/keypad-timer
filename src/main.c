@@ -299,8 +299,10 @@ static void DrawKey(GpGraphics *g, int id)
     const wchar_t *s = id < 10 ? d : lab[id - B_ADD1];
     if (gPress == id)        /* pushed in: darker face and edge */
         FillRim(g, r, 8, Mix(fill, 0, cream ? 0.18f : 0.12f), Mix(fill, 0, 0.45f), 3);
-    else                     /* flat top, narrow rounded edge; hover lightens (more on gold keys) */
-        FillRim(g, r, 8, gHover == id ? Mix(fill, 0xFFFFFFFF, cream ? 0.45f : 0.12f) : fill, Mix(fill, 0, 0.35f), 3);
+    else if (gHover == id)   /* hover: lighter face and a light rim, so every key type is obvious */
+        FillRim(g, r, 8, Mix(fill, 0xFFFFFFFF, cream ? 0.58f : 0.40f), Mix(fill, 0xFFFFFFFF, 0.28f), 3);
+    else                     /* flat top, narrow rounded edge */
+        FillRim(g, r, 8, fill, Mix(fill, 0, 0.35f), 3);
     if (id >= B_ADD1 && id <= B_ADD10) {   /* big number + small unit */
         const wchar_t *unit = id == B_ADD1 ? L"分" : L"秒";
         float wn = Text(g, s, r, 19, 0, 1), wu = Text(g, unit, r, 10.5f, 0, 1), x0 = r.x + (r.w - wn - wu - 1.5f) / 2;
@@ -309,7 +311,7 @@ static void DrawKey(GpGraphics *g, int id)
     } else
         Text(g, s, r, id < 10 ? 20 : 15, ink, 0);
     if (id == 5) {   /* tactile home: a slightly raised ring around the 5, like a fingertip bump */
-        float cx = r.x + r.w / 2, cy = r.y + r.h / 2, d = 25.0f;
+        float cx = r.x + r.w / 2, cy = r.y + r.h / 2, d = 32.0f;
         float x = cx - d / 2, y = cy - d / 2;
         GpPen *p;
         GdipCreatePen1(Mix(fill, 0, gPress == id ? 0.32f : 0.26f), 1.25f, UnitWorld, &p);
@@ -557,7 +559,14 @@ static int Shot(const wchar_t *file, const wchar_t *what)
         tl_add(&gT, 30, 0);
     }
     if (!wcscmp(what, L"sec30")) tl_add(&gT, 30, 0);   /* 0:00:30, both seconds digits red */
-    if (!wcscmp(what, L"hover")) gHover = 8;
+    if (!wcscmp(what, L"hover")) gHover = 8;     /* gold 8 */
+    if (!wcscmp(what, L"hover7")) gHover = 7;    /* red 7 */
+    if (!wcscmp(what, L"hover5")) gHover = 5;    /* darker red 5 */
+    if (!wcscmp(what, L"hoveradd")) gHover = B_ADD1;  /* 1分, dark add key */
+    if (!wcscmp(what, L"withsec20")) {   /* 1:30:20, minutes ones 0 also red */
+        for (i = 0; i < 3; i++) tl_digit(&gT, L"130"[i] - L'0', 0);
+        tl_add(&gT, 10, 0); tl_add(&gT, 10, 0);
+    }
     if (!wcscmp(what, L"compact")) gH = H_COMPACT;
     if (!wcscmp(what, L"running") || !wcscmp(what, L"compact") || !wcscmp(what, L"paused") || !wcscmp(what, L"alarm") || !wcscmp(what, L"over") || !wcscmp(what, L"overlong")) {
         tl_digit(&gT, 2, 0); tl_digit(&gT, 5, 0);

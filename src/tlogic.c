@@ -119,7 +119,8 @@ int tl_setting_red(const Timer *t, int i)
     if (t->st != TL_IDLE || t->disp <= 0 || i < 0 || i > 5) return 0;
     tl_digits(t, 0, dig);
     if (dig[i] > 0) return 1;
-    return i == 5 && t->raw_s > 0;   /* trailing 0 of seconds, when seconds are present */
+    if (i == 3 && t->raw_m / 10 > 0) return 1;   /* ones of minutes, when the tens is set (0:30, 1:30) */
+    return i == 5 && t->raw_s > 0;               /* ones of seconds, when seconds are present */
 }
 
 int tl_accent(const Timer *t, long long now)
@@ -157,7 +158,7 @@ int tl_digit(Timer *t, int d, long long now)
     if (t->ndig < 4) t->ndig++;
     t->raw_h = t->entry / 100;
     t->raw_m = t->entry % 100;
-    t->raw_s = 0;                             /* show 0:90:00 as typed; normalize at start */
+    /* keep raw_s: digit keys replace H:M only (0:05:20 then 1 -> 0:01:20) */
     sync_disp(t);
     return 1;
 }

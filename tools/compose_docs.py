@@ -47,8 +47,8 @@ def overview(names, panel_w=210, margin=12, gap=20):
         canvas.paste(im, (x, margin), im)
         x += panel_w + gap
     canvas.save(DOCS / "overview.png")
-    SHOTS.joinpath(f"overview-0.5.3.png").parent.mkdir(exist_ok=True)
-    canvas.save(SHOTS / "overview-0.5.3.png")
+    SHOTS.joinpath(f"overview-0.5.4.png").parent.mkdir(exist_ok=True)
+    canvas.save(SHOTS / "overview-0.5.4.png")
     print("overview", canvas.size)
 
 def compact():

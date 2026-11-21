@@ -51,8 +51,10 @@ int  tl_alarm_lit(const Timer *t, long long now);
 int  tl_sig_from(int sec);
 /* 1 if display digit i (0..5) of `sec` is a visible non-zero. */
 int  tl_digit_nz(int sec, int i);
-/* 1 if IDLE setting digit i (0..5) should be red: each non-zero digit, and the
-   ones of seconds when seconds are non-zero (so 0:00:30 lights both 3 and 0). */
+/* 1 if IDLE setting digit i (0..5) should be red: each non-zero digit;
+   the ones of minutes when the tens of minutes is set (0:30, 1:30);
+   the ones of seconds when seconds are non-zero (0:00:30 lights 3 and 0).
+   Hours only (1:00:00) leaves the minutes zeros in the usual ink. */
 int  tl_setting_red(const Timer *t, int i);
 /* Accent: 0 = all normal, 1 = setting (red digits), 2 = stopwatch / overtime (blue suffix). */
 int  tl_accent(const Timer *t, long long now);

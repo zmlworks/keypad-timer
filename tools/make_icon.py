@@ -7,19 +7,17 @@ from PIL import Image, ImageDraw
 import struct
 
 SIZES = (16, 20, 24, 32, 40, 48, 64, 256)
-# v0.5.2 crop: zoom ~10% so the red body fills the canvas (title chrome cropped).
-CROP_SCALE = 0.90
-CROP_TOP = 56
+# 2x screenshot is 480 x 836. Larger sizes use the body from just below the
+# title-bar buttons down to the bottom of the 7-8-9 row, tighter than v0.5.3.
+# 16-32 zoom in on the LCD's 0:30 (red minutes digits) so the time stays legible.
+CROP_APP = (44, 56, 436, 448)
+CROP_LCD = (88, 62, 308, 282)
 RADIUS_AT_256 = 28
 
-def icon_master(shot_path, size=512):
-    shot = Image.open(shot_path).convert("RGBA")
-    sw = shot.width
-    side = int(sw * CROP_SCALE)
-    left = (sw - side) // 2
-    top = CROP_TOP
-    crop = shot.crop((left, top, left + side, top + side))
-    return crop.resize((size, size), Image.Resampling.LANCZOS)
+def frame(shot, size):
+    box = CROP_LCD if size <= 32 else CROP_APP
+    im = shot.crop(box).resize((size, size), Image.Resampling.LANCZOS)
+    return mask_rounded(im)
 
 def mask_rounded(im):
     s = im.size[0]
@@ -82,11 +80,8 @@ def save_ico(path, images):
         f.write(out)
 
 def main():
-    master = icon_master("shots/icon.png", 512)
-    imgs = []
-    for s in SIZES:
-        im = master.resize((s, s), Image.Resampling.LANCZOS)
-        imgs.append(mask_rounded(im))
+    shot = Image.open("shots/icon.png").convert("RGBA")
+    imgs = [frame(shot, s) for s in SIZES]
     save_ico("src/app.ico", imgs)
 
     gap = 16
